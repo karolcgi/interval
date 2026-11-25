@@ -85,7 +85,7 @@ function ConflictPopover(p: { x: number; y: number; date: number; onClose: () =>
             <li key={s.tb.id}>
               <label>
                 <input type="checkbox" checked={on} onChange={() => setKeep((k) => (on ? k.filter((x) => x !== s.tb.id) : [...k, s.tb.id]))} />
-                <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} />
+                <CatDot color={c?.color ?? "#888"} icon={c?.icon} />
                 <span>
                   <b>{name(s.tb.categoryId, s.tb.title)}</b> {fmtTime(s.startAt, tf)}–{fmtTime(s.endAt, tf)}
                   <span className="muted small"> overlaps {w.map((b) => name(b.categoryId, b.title)).join(", ")}</span>

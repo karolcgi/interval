@@ -13,9 +13,8 @@ export interface Category {
   id: Id;
   name: string;
   color: string; // hex, e.g. #8298d7
-  icon: string | null; // lucide icon name (v1, unused)
-  /** Optional emoji shown before the name. */
-  emoji?: string | null;
+  /** Lucide icon name shown in place of the colour dot (v0.8; replaced the v0.5 emoji). */
+  icon: string | null;
   parentId: Id | null; // optional subcategory parent
   sortOrder: number;
   shortcut: string | null; // single key, e.g. "1" or "f"
@@ -50,11 +49,14 @@ export interface Block {
   presetId?: Id | null;
   /** The weekly-template block it was confirmed from (v0.7). Hides that suggestion on this date. */
   templateBlockId?: Id | null;
+  /** Own icon and colour (v0.8), copied from a preset; null = the category's. */
+  icon?: string | null;
+  color?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-/** A reusable block configuration in the preset library (v0.7). Its colour comes from its category. */
+/** A reusable block configuration in the preset library (v0.7). Own icon and colour since v0.8 (null = the category's). */
 export interface ActivityPreset {
   id: Id;
   name: string;
@@ -65,6 +67,8 @@ export interface ActivityPreset {
   focusPresetId: string | null; // a focus timer preset (settings.focusPresets) to offer when starting
   favorite: boolean;
   sortOrder: number;
+  icon: string | null;
+  color: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -81,6 +85,8 @@ export interface WeekTemplateBlock {
   notes: string | null;
   tagIds: Id[];
   presetId: Id | null;
+  icon?: string | null;
+  color?: string | null;
   createdAt: number;
   updatedAt: number;
 }

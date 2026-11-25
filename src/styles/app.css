@@ -3068,6 +3068,20 @@ textarea.field {
 .dl-dur {
   font-variant-numeric: tabular-nums;
 }
+.daylog-list li.dl-note {
+  color: var(--accent);
+}
+.daylog-list li.dl-note .dl-time {
+  color: color-mix(in oklab, var(--accent) 75%, var(--text-3));
+}
+.daylog-list li.dl-note .dl-title {
+  white-space: normal;
+  font-style: italic;
+}
+.dl-note-icon {
+  align-self: center;
+  color: var(--accent);
+}
 .daylog-list.compact li {
   grid-template-columns: 78px 8px minmax(0, 1fr) auto;
   gap: 8px;
@@ -3729,8 +3743,8 @@ html[data-window] #root {
 }
 .float-root.mini.standard {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  padding: 8px 10px 7px 12px;
+  grid-template-rows: auto 1fr auto auto auto auto;
+  padding: 8px 10px 0 12px;
 }
 .float-root.mini.compact {
   display: flex;
@@ -3988,7 +4002,7 @@ html[data-window] #root {
 
 /* floating timer: pin / edit / open, edit view */
 .mt-close.on { opacity: 1; color: var(--focus); }
-.float-root.mini.editing { grid-template-rows: auto auto auto auto auto; align-content: start; }
+.float-root.mini.editing { grid-template-rows: none; grid-auto-rows: auto; align-content: start; }
 .float-root.mini.editing .mt-close { opacity: 1; }
 .mt-edit { display: grid; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .mt-input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: var(--fs-sm); outline: none; }
@@ -3998,7 +4012,6 @@ html[data-window] #root {
 .mt-cat:hover { background: var(--hover); color: var(--text); }
 .mt-cat.on { border-color: color-mix(in srgb, var(--cc) 60%, transparent); background: color-mix(in srgb, var(--cc) 14%, transparent); color: var(--text); }
 .mt-cat-dot { display: grid; place-items: center; flex: none; width: 14px; height: 14px; border-radius: 50%; background: color-mix(in srgb, var(--cc) 85%, transparent); font-size: 10px; line-height: 1; }
-.mt-cat-dot:not(:empty) { background: none; font-size: 12px; }
 .mt-cat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mt-lengths { display: flex; gap: 4px; align-items: center; }
 .mt-len { height: 24px; min-width: 32px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
@@ -4016,30 +4029,40 @@ html[data-window] #root {
 .settings-tab.on { color: var(--text); background: var(--active, var(--hover)); box-shadow: inset 0 -2px 0 var(--focus); }
 .settings .settings-tabs + .section-title, .settings .settings-tabs + * > .section-title:first-child { margin-top: 4px; }
 
-/* ── Emoji icons (v0.5) ─────────────────────────────────────────────── */
-.cat-emoji { display: inline-grid; place-items: center; flex: none; width: 1.25em; line-height: 1; font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
-.emoji-trigger { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 6px; color: var(--text-4); font-size: 16px; line-height: 1; }
-.emoji-trigger:hover { background: var(--hover); color: var(--text-2); }
-.emoji-trigger.has { color: inherit; }
-.emoji-trigger.sm { width: 24px; height: 26px; font-size: 14px; }
+/* ── Lucide icons (v0.8; replaced the v0.5 emoji) ───────────────────── */
+.cat-icon { display: inline-grid; place-items: center; flex: none; line-height: 0; }
+.block-title .cat-icon { color: var(--c-text) !important; opacity: 0.85; }
+.icon-trigger-wrap { position: relative; display: inline-flex; flex: none; }
+.icon-trigger { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 6px; color: var(--text-4); }
+.icon-trigger:hover { background: var(--hover); color: var(--text-2); }
+.icon-trigger.sm { width: 24px; height: 26px; }
 .cat-name-cell { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
 .cat-name-cell .field { flex: 1; min-width: 0; }
 .insp-title-row { position: relative; display: flex; align-items: center; gap: 4px; margin-left: -6px; }
 .insp-title-row .insp-title { flex: 1; min-width: 0; margin: 0; }
 .mt-name-row { display: flex; align-items: center; gap: 3px; }
 .mt-name-row .mt-input { flex: 1; min-width: 0; }
-.emoji-picker { position: absolute; top: 32px; left: 0; z-index: 40; width: 292px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.emoji-picker.inline { position: static; width: auto; padding: 6px; box-shadow: none; }
-.emoji-search { display: flex; align-items: center; gap: 4px; }
-.emoji-search .field { flex: 1; min-width: 0; }
-.emoji-scroll { max-height: 236px; overflow-y: auto; }
-.emoji-picker.inline .emoji-scroll { max-height: 150px; }
-.emoji-group { font-size: var(--fs-2xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-4); padding: 6px 2px 3px; }
-.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 2px; }
-.emoji-btn { height: 30px; border-radius: 6px; font-size: 18px; line-height: 1; font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
-.emoji-picker.inline .emoji-btn { height: 26px; font-size: 15px; }
-.emoji-btn:hover, .emoji-btn:focus-visible { background: var(--hover); outline: none; }
-.emoji-empty { padding: 10px 4px; }
+.icon-picker { --ic: var(--text); position: absolute; top: 32px; left: 0; z-index: 40; width: 300px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.icon-search { display: flex; align-items: center; gap: 4px; }
+.icon-search .field { flex: 1; min-width: 0; }
+.icon-scroll { max-height: 248px; overflow-y: auto; }
+.icon-group { font-size: var(--fs-2xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-4); padding: 6px 2px 3px; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 2px; }
+.icon-cell { display: grid; place-items: center; height: 30px; border-radius: 6px; color: var(--text-2); }
+.icon-cell:hover, .icon-cell:focus-visible { background: color-mix(in oklab, var(--ic) 16%, transparent); color: var(--ic); outline: none; }
+.icon-cell.on { background: color-mix(in oklab, var(--ic) 22%, transparent); color: var(--ic); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ic) 55%, transparent); }
+.icon-empty { padding: 10px 4px; }
+.pf-name { display: flex; align-items: center; gap: 4px; }
+.pf-name .field { flex: 1; min-width: 0; }
+.tpl-editor .pf-name { margin-left: -6px; }
+
+/* own colour: "Category" + palette */
+.color-field { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.swatch.sm { width: 16px; height: 16px; border-width: 2px; }
+.color-auto { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 4px; margin-right: 2px; border-radius: 11px; border: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-xs); }
+.color-auto:hover { color: var(--text); background: var(--hover); }
+.color-auto.on { color: var(--text); border-color: var(--text-3); }
+.color-auto .swatch.sm { width: 12px; height: 12px; border: 0; }
 
 /* ── Diary notes (v0.6) ─────────────────────────────────────────────── */
 .annotate { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
@@ -4259,18 +4282,30 @@ html[data-window] #root {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 26px;
-  padding: 0 var(--sp-1) 0 0;
+  height: 28px;
+  margin: 0 2px 4px;
+  padding: 0 var(--sp-2) 0 4px;
   border-radius: var(--r-md);
+  /* v0.8: a small coloured block, so it reads as something you drag onto the calendar */
+  background: color-mix(in oklab, var(--c) 20%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--c) 38%, transparent);
+  border-left: 3px solid var(--c);
   font-size: var(--fs-sm);
-  color: var(--text-2);
+  color: var(--text);
   cursor: grab;
   user-select: none;
   touch-action: none;
+  transition: background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .plib-row:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: color-mix(in oklab, var(--c) 30%, var(--surface));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+.plib-row .preset-dur {
+  color: color-mix(in oklab, var(--c) 30%, var(--text-3));
+}
+.plib-row .cat-dot {
+  display: none;
 }
 .plib-row.dragging {
   opacity: 0.45;
@@ -4280,6 +4315,7 @@ html[data-window] #root {
   color: var(--text-4);
   opacity: 0;
   margin-right: -4px;
+  margin-left: -2px;
   transition: opacity var(--dur-fast) var(--ease);
 }
 .plib-row:hover .preset-grip,
@@ -4330,8 +4366,9 @@ html[data-window] #root {
   height: 26px;
   padding: 0 10px;
   border-radius: var(--r-md);
-  background: var(--raised);
+  background: color-mix(in oklab, var(--c) 26%, var(--raised));
   border: 1px solid color-mix(in oklab, var(--c) 60%, var(--border));
+  border-left: 3px solid var(--c);
   box-shadow: var(--shadow);
   font-size: var(--fs-sm);
   color: var(--text);
@@ -4549,12 +4586,17 @@ html[data-window] #root {
 }
 .presets-page .plib-list .preset-card {
   height: 44px;
+  border-left: 3px solid var(--c);
+  background: color-mix(in oklab, var(--c) 8%, transparent);
+}
+.preset-card .cat-dot {
+  display: none;
 }
 .plib-grid .preset-card {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--c) 34%, var(--border));
   border-left: 3px solid var(--c);
   border-radius: var(--r-md);
-  background: var(--surface);
+  background: color-mix(in oklab, var(--c) 12%, var(--surface));
   align-items: flex-start;
   min-height: 64px;
 }
@@ -4715,3 +4757,95 @@ html[data-window] #root {
     display: none;
   }
 }
+
+/* ── Floating timer (v0.8): live indicator, quick note, bottom toggle ── */
+.mt-clock {
+  margin-left: -6px;
+  padding: 3px 6px 4px;
+  border-radius: 8px;
+  transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.mt-clock.live {
+  background: color-mix(in oklab, var(--ok) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ok) 30%, transparent);
+}
+.mini.compact .mt-clock {
+  margin-left: 0;
+  padding: 2px 6px;
+}
+.mini.compact .mt-clock.live {
+  margin-left: -4px;
+}
+.mt-note {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.mt-note:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--border));
+}
+.mt-note-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 7px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  outline: none;
+}
+.mt-note-input::placeholder {
+  color: var(--text-4);
+}
+.mt-note.sent .mt-note-input::placeholder {
+  color: var(--accent);
+}
+.mt-note-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 18px;
+  margin-right: 1px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+.mt-note-send:disabled {
+  color: var(--text-4);
+  opacity: 0.5;
+}
+.mt-note-send:hover:not(:disabled) {
+  background: var(--hover);
+}
+.mt-toggle {
+  display: grid;
+  place-items: center;
+  height: 14px;
+  margin: 1px -10px 0 -12px;
+  color: var(--text-4);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.mt-toggle:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.mt-toggle svg {
+  transition: transform var(--dur) var(--ease);
+}
+.mt-toggle.open svg {
+  transform: rotate(180deg);
+}
+.mt-cat-dot.has {
+  background: none;
+  color: var(--cc);
+}
+.kind-menu li { display: flex; align-items: center; gap: 7px; }
+.kind-btn { color: var(--text-3); }
+.kind-btn:hover { color: var(--text); }

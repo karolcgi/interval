@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { ENTRY_KINDS, type EntryKind } from "../domain/types";
 import { KIND_ICON, KIND_LABEL } from "../domain/entries";
+import { Icon } from "./icons";
 import type { CompletedPhase } from "../domain/focus";
 import type { TimerCommand } from "../state/focus";
 
@@ -40,7 +41,7 @@ export function AnnotateBox({ completed, send, already = 0, className }: { compl
       <div className="annotate-kinds" role="radiogroup" aria-label="Note type">
         {ENTRY_KINDS.map((k) => (
           <button key={k} role="radio" aria-checked={k === kind} className={`annotate-kind ${k === kind ? "on" : ""}`} onClick={() => setKind(k)} title={KIND_LABEL[k]}>
-            <span aria-hidden>{KIND_ICON[k]}</span>
+            <Icon name={KIND_ICON[k]} size={13} />
             <span className="annotate-kind-label">{KIND_LABEL[k]}</span>
           </button>
         ))}

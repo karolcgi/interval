@@ -363,7 +363,7 @@ export function CategoryPicker(p: { categories: Category[]; value: string; onCha
   return (
     <div className="ftp-cat" ref={ref} style={catVars(current?.color ?? "#888")}>
       <button type="button" className="cat-select ftp-cat-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Category: ${current?.name ?? "none"}`} onClick={toggle} onKeyDown={onKey}>
-        <CatDot color={current?.color ?? "#888"} emoji={current?.emoji} />
+        <CatDot color={current?.color ?? "#888"} icon={current?.icon} />
         <span className="ftp-cat-name">{current?.name ?? "Choose a category"}</span>
         <ChevronDown size={12} className="muted" />
       </button>
@@ -379,7 +379,7 @@ export function CategoryPicker(p: { categories: Category[]; value: string; onCha
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(c.id)}
             >
-              <CatDot color={c.color} emoji={c.emoji} />
+              <CatDot color={c.color} icon={c.icon} />
               <span>
                 {c.parentId ? "↳ " : ""}
                 {c.name}

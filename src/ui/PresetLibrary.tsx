@@ -8,7 +8,7 @@ import * as A from "../state/actions";
 import * as L from "../state/library";
 import type { ActivityPreset, Category, Id } from "../domain/types";
 import { fmtDuration } from "../domain/format";
-import { CatDot, catVars, usePlacement, useOutside } from "./bits";
+import { CatDot, catVars, lookOf, usePlacement, useOutside } from "./bits";
 import { MenuItem } from "./ContextMenus";
 import { SideSection } from "./SideSection";
 import { beginPresetDrag, registerDropTarget } from "./presetDrag";
@@ -130,12 +130,13 @@ export function PresetLibrary() {
         <ul className="plib-list" ref={listRef} aria-label="Activity presets">
           {shown.map((p, i) => {
             const c = catById.get(p.categoryId);
+            const look = lookOf(p, c);
             return (
               <li
                 key={p.id}
                 data-preset={p.id}
                 className={`plib-row ${dragging === p.id ? "dragging" : ""} ${insertAt === i ? "insert-before" : ""} ${insertAt === shown.length && i === shown.length - 1 ? "insert-after" : ""}`}
-                style={catVars(c?.color ?? "#888")}
+                style={catVars(look.color)}
                 onPointerDown={(e) => beginPresetDrag(e, p.id)}
                 onDoubleClick={() => openPresetEditor(p.id)}
                 onContextMenu={(e) => (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, id: p.id }))}
@@ -143,7 +144,7 @@ export function PresetLibrary() {
                 aria-label={`Preset ${p.name}, ${fmtMinutes(p.durationMinutes)}`}
               >
                 <GripVertical size={12} className="preset-grip" aria-hidden />
-                <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} />
+                <CatDot color={look.color} icon={look.icon} />
                 <span className="preset-name">{p.name}</span>
                 {p.favorite && <Star size={10} className="preset-star" fill="currentColor" aria-label="Favourite" />}
                 <span className="preset-dur">{fmtMinutes(p.durationMinutes)}</span>
@@ -186,8 +187,8 @@ export function PresetDragChip() {
   const cat = useApp((s) => (preset ? s.categories.find((c) => c.id === preset.categoryId) : undefined));
   if (!drag || !preset) return null;
   return (
-    <div className="preset-drag-chip" style={{ left: drag.x + 12, top: drag.y + 10, ...catVars(cat?.color ?? "#888") }} aria-hidden>
-      <CatDot color={cat?.color ?? "#888"} emoji={cat?.emoji} />
+    <div className="preset-drag-chip" style={{ left: drag.x + 12, top: drag.y + 10, ...catVars(lookOf(preset, cat).color) }} aria-hidden>
+      <CatDot color={lookOf(preset, cat).color} icon={lookOf(preset, cat).icon} />
       <span>{preset.name}</span>
       <span className="preset-dur">{fmtMinutes(preset.durationMinutes)}</span>
     </div>

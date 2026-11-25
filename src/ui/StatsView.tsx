@@ -101,7 +101,7 @@ export function StatsView() {
           <span className="eyebrow">Categories</span>
           {usedCats.map((c) => (
             <button key={c.id} className={`chip cat-chip ${catFilter.includes(c.id) ? "on" : ""}`} style={catVars(c.color)} onClick={() => toggle(catFilter, c.id, setCatFilter)} aria-pressed={catFilter.includes(c.id)}>
-              <CatDot color={c.color} emoji={c.emoji} /> {c.name}
+              <CatDot color={c.color} icon={c.icon} /> {c.name}
             </button>
           ))}
         </div>
@@ -460,7 +460,7 @@ function DrillList(p: { drill: NonNullable<Drill>; sessions: Session[]; range: I
                   {fmtTime(x.start)}–{fmtTime(x.end)}
                 </td>
                 <td>
-                  <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} /> {c?.name}
+                  <CatDot color={c?.color ?? "#888"} icon={c?.icon} /> {c?.name}
                 </td>
                 <td>{x.session.title}</td>
                 <td className="muted">{x.session.tagIds.map((t) => "#" + tagById.get(t)?.name).join(" ")}</td>

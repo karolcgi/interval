@@ -68,7 +68,7 @@ function broadcastOf(s: AppState): TimerBroadcast {
       clickThrough: s.settings.miniClickThrough,
       takesFocus: s.settings.focusPopupTakesFocus,
       onTop: s.settings.miniOnTop,
-      categories: s.categories.filter((c) => !c.archivedAt && !c.isBreak).map((c) => ({ id: c.id, name: c.name, color: c.color, icon: c.emoji ?? null })),
+      categories: s.categories.filter((c) => !c.archivedAt && !c.isBreak).map((c) => ({ id: c.id, name: c.name, color: c.color, icon: c.icon ?? null })),
       focusMin: s.settings.pomodoroFocus,
       annotate: s.settings.annotatePrompt,
       mode: s.settings.focusTimerMode,

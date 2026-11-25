@@ -1,4 +1,5 @@
 import type { DbDriver } from "./driver";
+import { emojiToIconSql } from "../domain/iconMap";
 
 // Append-only list. Never edit a migration that has shipped; add a new one.
 // Tables for Phase 2/3 features (budgets, recurrence, templates, milestones) are created
@@ -262,6 +263,26 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `ALTER TABLE blocks ADD COLUMN preset_id TEXT`,
       `ALTER TABLE blocks ADD COLUMN template_block_id TEXT`,
       `CREATE INDEX idx_blocks_template ON blocks(template_block_id)`,
+    ],
+  },
+  {
+    version: 8,
+    name: "lucide icons and preset colours",
+    up: [
+      // Lucide icons replace category emoji. `icon` (unused since v1) now holds a Lucide name; each emoji is
+      // mapped to its closest icon, and categories without an emoji lose the old v1 names so nothing changes
+      // look unexpectedly. `emoji` stays in the table (unused) so a downgrade still reads.
+      emojiToIconSql(),
+      // Presets get their own icon and colour (null = the category's). Blocks and template blocks carry a
+      // copy, so a block dropped from a coloured preset keeps that colour on the calendar.
+      `ALTER TABLE activity_presets ADD COLUMN icon TEXT`,
+      `ALTER TABLE activity_presets ADD COLUMN color TEXT`,
+      `ALTER TABLE blocks ADD COLUMN icon TEXT`,
+      `ALTER TABLE blocks ADD COLUMN color TEXT`,
+      `ALTER TABLE week_template_blocks ADD COLUMN icon TEXT`,
+      `ALTER TABLE week_template_blocks ADD COLUMN color TEXT`,
+      `ALTER TABLE recurrence_rules ADD COLUMN icon TEXT`,
+      `ALTER TABLE recurrence_rules ADD COLUMN color TEXT`,
     ],
   },
 ];

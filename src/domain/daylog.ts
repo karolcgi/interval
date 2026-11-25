@@ -1,7 +1,7 @@
 // Day log: what actually happened on a day, as a plain Markdown timeline built from recorded sessions.
 // Pure; the UI renders the same entries and copies/saves the Markdown (e.g. into an Obsidian vault).
 
-import type { Block, Category, Id, Session, Tag } from "./types";
+import type { Block, Category, Id, JournalEntry, Session, Tag } from "./types";
 import { addDays, dayKey } from "./time";
 import { computeStats } from "./stats";
 import { fmtDuration, fmtTime } from "./format";
@@ -20,9 +20,18 @@ export interface DayLogEntry {
   sessionIds: Id[];
 }
 
+/** A quick note typed into the floating timer (v0.8), shown in the log at the time it was sent. */
+export interface DayLogNote {
+  id: Id;
+  at: number;
+  text: string;
+}
+
 export interface DayLog {
   day: number;
   entries: DayLogEntry[];
+  notes: DayLogNote[]; // oldest first
+
   totalMs: number; // excluding breaks; overlaps counted once
   breakMs: number;
   byCategory: Array<{ categoryId: Id; name: string; color: string; ms: number }>; // excluding breaks, largest first
@@ -34,7 +43,7 @@ const GAP_MERGE_MS = 60_000;
  * Sessions overlapping `day`, clipped to it, oldest first. Back-to-back sessions (gap ≤ 1 min) with the same
  * title and category are merged into one line, so a paused-and-resumed session reads as one activity.
  */
-export function buildDayLog(day: number, sessions: Session[], blocks: Block[], categories: Category[], tags: Tag[], now: number): DayLog {
+export function buildDayLog(day: number, sessions: Session[], blocks: Block[], categories: Category[], tags: Tag[], now: number, journal: JournalEntry[] = []): DayLog {
   const dayEnd = addDays(day, 1);
   const cat = new Map(categories.map((c) => [c.id, c]));
   const tagName = new Map(tags.map((t) => [t.id, t.name]));
@@ -78,7 +87,17 @@ export function buildDayLog(day: number, sessions: Session[], blocks: Block[], c
     .filter((r) => r.recordedMs > 0 && !cat.get(r.categoryId)?.isBreak)
     .map((r) => ({ categoryId: r.categoryId, name: cat.get(r.categoryId)?.name ?? "Uncategorised", color: cat.get(r.categoryId)?.color ?? "#888888", ms: r.recordedMs }))
     .sort((a, b) => b.ms - a.ms);
-  return { day, entries, totalMs, breakMs, byCategory };
+  const notes = journal
+    .filter((j) => j.source === "capture" && j.at >= day && j.at < dayEnd)
+    .sort((a, b) => a.at - b.at || a.createdAt - b.createdAt)
+    .map((j) => ({ id: j.id, at: j.at, text: j.text }));
+  return { day, entries, notes, totalMs, breakMs, byCategory };
+}
+
+/** Sessions and quick notes in one timeline, by start time (a note sorts after an entry starting the same minute). */
+export function dayLogItems(log: DayLog): Array<{ kind: "entry"; at: number; entry: DayLogEntry } | { kind: "note"; at: number; note: DayLogNote }> {
+  const items = [...log.entries.map((entry) => ({ kind: "entry" as const, at: entry.start, entry })), ...log.notes.map((note) => ({ kind: "note" as const, at: note.at, note }))];
+  return items.sort((a, b) => a.at - b.at || (a.kind === b.kind ? 0 : a.kind === "entry" ? -1 : 1));
 }
 
 /** Escape characters that would turn a title into Markdown formatting or a link. */
@@ -120,11 +139,16 @@ export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; 
     );
   }
   if (opts.heading !== false) lines.push(`# ${longDate.format(log.day)}`, "");
-  if (!log.entries.length) {
+  if (!log.entries.length && !log.notes.length) {
     lines.push("Nothing recorded.");
     return lines.join("\n") + "\n";
   }
-  for (const e of log.entries) {
+  for (const item of dayLogItems(log)) {
+    if (item.kind === "note") {
+      lines.push(`- ${fmtTime(item.note.at, tf)} *Note:* ${mdText(item.note.text)}`);
+      continue;
+    }
+    const e = item.entry;
     const time = `${fmtTime(e.start, tf)}–${e.running ? "now" : fmtTime(e.end, tf)}`;
     const name = e.isBreak && e.title === e.categoryName ? mdText(e.title) : `**${mdText(e.title)}**`;
     const parts = [name];
@@ -143,7 +167,7 @@ export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; 
 
 /** Several days in one file (oldest first), each under a `##` heading. Days with nothing recorded are skipped. */
 export function rangeLogMarkdown(logs: DayLog[], opts: { timeFormat?: "24h" | "12h" } = {}): string {
-  const days = logs.filter((l) => l.entries.length);
+  const days = logs.filter((l) => l.entries.length || l.notes.length);
   if (!days.length) return "Nothing recorded.\n";
   return days.map((l) => `## ${longDate.format(l.day)}\n\n${dayLogMarkdown(l, { ...opts, heading: false })}`).join("\n");
 }

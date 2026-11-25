@@ -30,8 +30,8 @@ export async function dayNote(day: number): Promise<{ name: string; md: string }
   const s = store.get();
   if (!s.db) return null;
   const end = addDays(day, 1);
-  const [sessions, blocks] = await Promise.all([repo.listSessions(s.db, day, end), repo.listBlocks(s.db, day, end)]);
-  const log = buildDayLog(day, sessions, blocks, s.categories, s.tags, Date.now());
+  const [sessions, blocks, journal] = await Promise.all([repo.listSessions(s.db, day, end), repo.listBlocks(s.db, day, end), repo.listEntries(s.db, day, end)]);
+  const log = buildDayLog(day, sessions, blocks, s.categories, s.tags, Date.now(), journal);
   return { name: `${dayKey(day)}.md`, md: dayLogMarkdown(log, { timeFormat: s.settings.timeFormat, frontmatter: true }) };
 }
 

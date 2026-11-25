@@ -119,6 +119,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 | Starting a block made from a preset with a focus-timer preset offers that timer; nothing starts by itself | ✅ |
 | Import a saved day template into a weekday (Template › Import day) | ✅ |
 
+## v0.8 status (icons, preset colours, floating timer)
+
+- **Lucide icons replace emoji everywhere**: categories, presets, blocks and diary note types use a curated, bundled set of line icons with keyword search. Existing category emoji were mapped to the closest icon on upgrade (migration v8); emoji typed into names stay as plain text.
+- **Presets have their own icon and colour** (default: the category's). Blocks dropped from a preset keep both, and so do duplicates, splits, repeats and template copies. Any block or template block can also get its own icon and colour in the details panel.
+- **Sidebar presets are coloured blocks**, so they read as things you drag onto the calendar.
+- **Floating timer**: a soft green pill behind the time while it runs; the name / category / length view opens from the always-visible arrow at the bottom; a **note line** adds a timestamped note to the Day log (accent colour, also in the Markdown and Obsidian daily note).
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.

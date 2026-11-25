@@ -21,6 +21,14 @@ export async function addEntry(p: { text: string; kind: EntryKind; at?: number; 
   return e;
 }
 
+/** A quick note (floating timer, v0.8): a timestamped line in the day log, linked to the running session if any. */
+export async function addQuickNote(text: string, at = Date.now()): Promise<JournalEntry | null> {
+  const running = store.get().running;
+  const e = await addEntry({ text, kind: "note", at, sessionId: running?.id ?? null, source: "capture" });
+  if (e) toast("Note added to the day log");
+  return e;
+}
+
 export async function updateEntry(e: JournalEntry, patch: Partial<Pick<JournalEntry, "text" | "kind">>) {
   const db = store.get().db;
   if (!db) return;

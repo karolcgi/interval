@@ -40,6 +40,8 @@ export function newPreset(partial: Partial<ActivityPreset> = {}): ActivityPreset
     notes: null,
     focusPresetId: null,
     favorite: false,
+    icon: null,
+    color: null,
     sortOrder: s.presets.length ? Math.max(...s.presets.map((p) => p.sortOrder)) + 1 : 0,
     createdAt: now,
     updatedAt: now,
@@ -126,6 +128,8 @@ export async function saveBlockAsPreset(block: Block) {
       durationMinutes: Math.max(5, Math.min(1440, Math.round((block.endAt - block.startAt) / MINUTE))),
       tagIds: [...block.tagIds],
       notes: block.notes,
+      icon: block.icon ?? null,
+      color: block.color ?? null,
     }),
   );
   A.toast(`Saved preset “${p.name}”`);
@@ -134,7 +138,7 @@ export async function saveBlockAsPreset(block: Block) {
 
 /** The fields a block (or template block) takes from a preset. Copies, never references. */
 export function presetFields(p: ActivityPreset) {
-  return { categoryId: p.categoryId, title: p.name, notes: p.notes, tagIds: [...p.tagIds], presetId: p.id };
+  return { categoryId: p.categoryId, title: p.name, notes: p.notes, tagIds: [...p.tagIds], presetId: p.id, icon: p.icon, color: p.color };
 }
 
 /** Drop a preset on a real day: a planned block, created immediately. Never starts a timer. */
@@ -153,7 +157,7 @@ function findTpl(id: Id): WeekTemplateBlock | undefined {
 
 export function newTemplateBlock(partial: Partial<WeekTemplateBlock> & Pick<WeekTemplateBlock, "weekday" | "startMinute" | "durationMinutes" | "categoryId">): WeekTemplateBlock {
   const now = Date.now();
-  return { id: repo.newId(), title: null, notes: null, tagIds: [], presetId: null, createdAt: now, updatedAt: now, ...partial };
+  return { id: repo.newId(), title: null, notes: null, tagIds: [], presetId: null, icon: null, color: null, createdAt: now, updatedAt: now, ...partial };
 }
 
 export async function createTemplateBlock(iv: Interval, categoryId: Id, extra: Partial<WeekTemplateBlock> = {}) {
@@ -235,7 +239,7 @@ export async function pasteIntoTemplate(weekday: number) {
   const changes = clip.map((b) => {
     const iv = { start: b.startAt, end: b.endAt };
     const f = fromRefInterval(iv);
-    return { type: "tblock" as const, before: null, after: newTemplateBlock({ ...f, weekday, categoryId: b.categoryId, title: b.title, notes: b.notes, tagIds: [...b.tagIds], presetId: b.presetId ?? null }) };
+    return { type: "tblock" as const, before: null, after: newTemplateBlock({ ...f, weekday, categoryId: b.categoryId, title: b.title, notes: b.notes, tagIds: [...b.tagIds], presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }) };
   });
   await A.commit(changes.length === 1 ? "Paste into template" : `Paste ${changes.length} blocks into template`, changes);
 }
@@ -248,7 +252,7 @@ export function copyTemplateBlocks(ids: Id[]) {
     .filter((t): t is WeekTemplateBlock => !!t)
     .map((t) => {
       const start = atMinute(refDay(t.weekday), t.startMinute);
-      return A.newBlock({ start, end: start + t.durationMinutes * MINUTE }, t.categoryId, { title: t.title, notes: t.notes, tagIds: t.tagIds, presetId: t.presetId });
+      return A.newBlock({ start, end: start + t.durationMinutes * MINUTE }, t.categoryId, { title: t.title, notes: t.notes, tagIds: t.tagIds, presetId: t.presetId, icon: t.icon ?? null, color: t.color ?? null });
     });
   store.set({ clipboard: blocks });
   if (blocks.length) A.toast(blocks.length === 1 ? "Block copied" : `${blocks.length} blocks copied`);

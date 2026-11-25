@@ -143,7 +143,7 @@ export function CategoryPicker(props: { x: number; y: number; title: string; onP
               pick(c.id);
             }}
           >
-            <CatDot color={c.color} emoji={c.emoji} />
+            <CatDot color={c.color} icon={c.icon} />
             <span className="picker-name">
               {c.parentId ? "↳ " : ""}
               {c.name}

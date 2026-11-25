@@ -16,7 +16,6 @@
 // In calendar mode the template's suggestions are drawn as ghosts in the Plan lane.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { startsWithEmoji } from "./EmojiPicker";
 import { Check, LayoutTemplate, Play, Repeat, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
@@ -25,7 +24,7 @@ import { dragToInterval, layoutColumns, minuteToPx, moveInterval, resizeInterval
 import { addDays, atMinute, dayKey, isSameDay, minuteOfDay, startOfDay } from "../domain/time";
 import { fmt, fmtDuration, fmtHourLabel, fmtTime } from "../domain/format";
 import { computeStats } from "../domain/stats";
-import { catVars } from "./bits";
+import { CatDot, catVars, lookOf } from "./bits";
 import { CategoryPicker } from "./CategoryPicker";
 import { GhostContextMenu, ItemContextMenu, TemplateBlockMenu } from "./ContextMenus";
 import * as L from "../state/library";
@@ -164,7 +163,7 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
     const d = dropAt(presetDrag.x, presetDrag.y);
     if (!p || !d) return null;
     const end = d.start + p.durationMinutes * 60_000;
-    return { day: d.day, iv: { start: d.start, end: tpl ? Math.min(end, addDays(d.day, 1)) : end }, label: p.name, color: categories.find((c) => c.id === p.categoryId)?.color ?? "#888" };
+    return { day: d.day, iv: { start: d.start, end: tpl ? Math.min(end, addDays(d.day, 1)) : end }, label: p.name, color: lookOf(p, categories.find((c) => c.id === p.categoryId)).color };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetDrag, presets, categories, tpl, hourHeight]);
   // Scroll while a preset is held near the top or bottom edge
@@ -314,12 +313,12 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
         if (iv.start === d.orig.start && !d.copy) return;
         if (d.lane === "plan" && tpl) {
           const b = blocksRef.current.find((x) => x.id === d.id);
-          if (d.copy && b) void L.createTemplateBlock(iv, b.categoryId, { title: b.title, notes: b.notes, tagIds: b.tagIds, presetId: b.presetId ?? null }).catch(A.reportError);
+          if (d.copy && b) void L.createTemplateBlock(iv, b.categoryId, { title: b.title, notes: b.notes, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }).catch(A.reportError);
           else if (!d.copy) void L.setTemplateInterval(d.id, iv, "Move template block").catch(A.reportError);
         } else if (d.lane === "plan") {
           if (d.copy) {
             const b = store.get().blocks.find((x) => x.id === d.id);
-            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null }).catch(A.reportError);
+            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }).catch(A.reportError);
           } else void A.updateBlock(d.id, { startAt: iv.start, endAt: iv.end }, "Move block").catch(A.reportError);
         } else {
           const s = store.get().sessions.find((x) => x.id === d.id);
@@ -673,6 +672,7 @@ function CreateGhost({ pos, iv, actual, drop }: { pos: { top: number; height: nu
 function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clippedTop: boolean; clippedBottom: boolean }; lay: { col: number; cols: number }; catById: ColumnProps["catById"]; tagById: ColumnProps["tagById"]; compact: boolean }) {
   const { tb, day } = p.g;
   const cat = p.catById.get(tb.categoryId);
+  const look = lookOf(tb, cat);
   const label = tb.title || cat?.name || "Untitled";
   const timeLabel = `${fmtTime(p.g.startAt)} – ${fmtTime(p.g.endAt)}`;
   const tiny = p.pos.height < 30;
@@ -681,7 +681,7 @@ function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clipp
   return (
     <div
       className={`block ghost-suggestion ${tiny ? "tiny" : ""}`}
-      style={itemStyle(p.pos, p.lay, cat?.color ?? "#888")}
+      style={itemStyle(p.pos, p.lay, look.color)}
       data-ghost={tb.id}
       data-ghost-day={day}
       title={`Template suggestion: ${label}\n${timeLabel}${tagNames.length ? "\n#" + tagNames.join(" #") : ""}\nDouble-click to add it to the plan`}
@@ -690,7 +690,8 @@ function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clipp
       <div className="block-body">
         <div className="block-title">
           <LayoutTemplate size={10} className="ghost-icon" aria-hidden />
-          <span>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>
+          {look.icon && <CatDot color={look.color} icon={look.icon} size={7} />}
+          <span>{label}</span>
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && <div className="block-meta">{timeLabel}{!p.compact ? " · Template" : ""}</div>}
@@ -733,7 +734,7 @@ function BlockView(p: {
 }) {
   const b = p.block;
   const cat = p.catById.get(b.categoryId);
-  const color = cat?.color ?? "#888";
+  const { color, icon } = lookOf(b, cat);
   const tagNames = b.tagIds.map((t) => p.tagById.get(t)?.name).filter(Boolean) as string[];
   const label = b.title || cat?.name || "Untitled";
   const timeLabel = `${fmtTime(b.startAt)} – ${fmtTime(b.endAt)}`;
@@ -754,7 +755,7 @@ function BlockView(p: {
       <div className="block-body">
         <div className="block-title">
           {b.recurrenceId && <Repeat size={10} />}
-          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} tpl={p.tpl} /> : <span className={b.title ? "" : "unnamed"}>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>}
+          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} tpl={p.tpl} /> : <>{icon && <CatDot color={color} icon={icon} size={7} />}<span className={b.title ? "" : "unnamed"}>{label}</span></>}
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && (
