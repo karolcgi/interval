@@ -164,6 +164,19 @@ export function SettingsView() {
         </Row>
       </div>
 
+      {isTauri() && (
+        <>
+          <h2 className="section-title">Updates</h2>
+          <div className="settings-block">
+            <Row label={`Version ${__APP_VERSION__}`} hint="Interval checks for signed updates at startup and every 6 hours. Updates never touch your data folder.">
+              <button className="btn btn-outline sm" onClick={() => void import("../updater").then((m) => m.checkForUpdate(true))}>
+                Check now
+              </button>
+            </Row>
+          </div>
+        </>
+      )}
+
       <h2 className="section-title">Keyboard</h2>
       <div className="settings-block shortcuts">
         {[
@@ -189,7 +202,7 @@ export function SettingsView() {
           </div>
         ))}
       </div>
-      <p className="muted small pad-top">Interval 0.1.0 · local-first · no account, no network.</p>
+      <p className="muted small pad-top">Interval {__APP_VERSION__} · local-first · no account, no network.</p>
     </section>
   );
 }

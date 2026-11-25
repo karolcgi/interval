@@ -56,6 +56,7 @@ export interface AppState {
   clipboard: Block[];
   paletteOpen: boolean;
   focusMode: boolean;
+  update: { version: string; notes: string | null; progress: number | null } | null;
 }
 
 const initial: AppState = {
@@ -85,6 +86,7 @@ const initial: AppState = {
   clipboard: [],
   paletteOpen: false,
   focusMode: false,
+  update: null,
 };
 
 type Listener = () => void;

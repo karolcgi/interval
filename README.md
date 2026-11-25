@@ -38,7 +38,35 @@ the schema. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 
 ---
 
-## Run it on Windows 11
+## Install (normal use)
+
+1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.
+2. Run it once. It installs per-user (no admin). SmartScreen may warn because the installer isn't code-signed:
+   "More info" › "Run anyway".
+
+**Updates are automatic from then on.** Interval checks GitHub at startup and every 6 hours. When a new version
+exists, an "Update available" card appears in the sidebar; "Install and restart" downloads it, verifies its
+signature and replaces the program files. Your data folder is never touched, and a running timer survives the
+restart because it lives in the database. Settings › Updates › Check now forces a check.
+
+## Releasing a new version
+
+```powershell
+npm run release -- 0.2.0
+```
+
+This bumps the version, commits, tags `v0.2.0` and pushes. GitHub Actions (`.github/workflows/release.yml`) runs the
+tests, builds the Windows installer, signs the update and publishes a release with `latest.json`. Installed copies
+offer the update within a few hours (or immediately via Check now). No local Windows build is needed; a coding agent
+with push access can do this too.
+
+**Update signing key.** Updates are signed with a private key stored as the repository secrets
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is in
+`src-tauri/tauri.conf.json`. Keep a backup of the key file and password in a password manager. If the key is lost,
+already-installed copies can't verify new updates and you'd have to reinstall once manually from a release built with
+a new key. Never commit the key.
+
+## Build it yourself on Windows 11 (optional)
 
 ### One-time setup
 
@@ -61,19 +89,16 @@ npm run app:dev        # opens the desktop app with hot reload
 `npm run dev` alone serves the UI in a browser at http://localhost:1420. In a browser it stores data in
 IndexedDB, which is handy for UI work, but use the desktop app for real records.
 
-### Build the installer
+### Build the installer locally
 
 ```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content path\to\interval-updater.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<password>"
 npm run app:build
 ```
 
-Output:
-
-- `src-tauri\target\release\bundle\nsis\Interval_0.1.0_x64-setup.exe` (recommended, per-user install, no admin)
-- `src-tauri\target\release\bundle\msi\Interval_0.1.0_x64_en-US.msi`
-
-Run the setup file. Interval appears in the Start menu. The installer is unsigned, so SmartScreen will warn
-the first time ("More info" › "Run anyway"). Code signing can be added later.
+Output: `src-tauri\target\release\bundle\nsis\Interval_<version>_x64-setup.exe`. (Signing variables are needed
+because the build also produces the signed update package. Normally CI does this.)
 
 ### Tests
 

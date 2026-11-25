@@ -48,6 +48,10 @@ export async function boot() {
     if (db.kind === "tauri") {
       // Daily rolling backup (keeps the last 14). Failure is reported but never blocks the app.
       invoke("db_backup_daily", { keep: 14 }).catch(reportError);
+      // Check for a new version shortly after start, then every 6 hours.
+      const { checkForUpdate } = await import("./updater");
+      setTimeout(() => void checkForUpdate(), 5_000);
+      setInterval(() => void checkForUpdate(), 6 * 3_600_000);
     }
     const flush = () => void db.flush?.();
     window.addEventListener("pagehide", flush);

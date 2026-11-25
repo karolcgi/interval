@@ -16,6 +16,7 @@ export function Sidebar() {
   const today = useApp((s) => s.today);
   const running = useApp((s) => s.running);
   const paused = useApp((s) => s.paused);
+  const update = useApp((s) => s.update);
   const now = useNow(30_000);
   const isTodayView = view === "calendar" && mode === "day" && isSameDay(date, now);
 
@@ -62,6 +63,21 @@ export function Sidebar() {
       </div>
 
       <div className="side-foot">
+        {update && (
+          <div className="update-card">
+            <div className="update-title">Update available · v{update.version}</div>
+            {update.progress === null ? (
+              <button className="btn btn-outline sm" onClick={() => void import("../updater").then((m) => m.installUpdate()).catch(A.reportError)}>
+                Install and restart
+              </button>
+            ) : (
+              <div className="progress">
+                <span style={{ width: `${update.progress}%` }} />
+              </div>
+            )}
+            <div className="update-sub">Your data is kept.</div>
+          </div>
+        )}
         <div className="today-chip" onClick={A.goToday} role="button" tabIndex={0}>
           <span className="eyebrow">Today</span>
           <span className="today-chip-val">{fmtDuration(totals.recordedMs)}</span>

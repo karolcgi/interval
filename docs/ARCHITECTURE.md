@@ -151,9 +151,23 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - **Single window, no close-to-tray yet.** Closing quits; a running timer survives because it lives in the database.
   A tray icon with a tooltip exists; tray timer controls are Phase 2.
 - **Browser preview uses IndexedDB.** Convenient for UI work, but not a supported place for real records.
-- **Unsigned installer.** Code signing needs a certificate; add `bundle.windows.certificateThumbprint` later.
+- **Installer not Authenticode-signed.** Updates are cryptographically signed (Tauri updater key), but Windows code signing needs a paid certificate; SmartScreen warns once on first install. Add `bundle.windows.certificateThumbprint` or Azure Trusted Signing later.
 
-## 9. Assumptions
+## 9. Distribution and updates
+
+- `.github/workflows/release.yml` runs on `v*` tags: tests on Ubuntu, then `tauri-action` on `windows-latest` builds the
+  NSIS installer, signs the updater artifact with `TAURI_SIGNING_PRIVATE_KEY`, and publishes a GitHub release with
+  `latest.json`.
+- `tauri-plugin-updater` polls `https://github.com/<owner>/interval/releases/latest/download/latest.json`
+  (endpoint in `src-tauri/tauri.conf.json`), verifies the minisign signature against the embedded public key and runs
+  the installer in passive mode; `tauri-plugin-process` relaunches. UI: `src/updater.ts`, sidebar card, Settings › Updates.
+- The app version comes from `package.json` (`"version": "../package.json"` in tauri.conf). `npm run release -- x.y.z`
+  bumps it, tags and pushes.
+- The data folder is derived from the bundle identifier `app.interval.desktop`. **Never change the identifier**, or
+  updated installs will look for data in a new folder.
+- The release repository must be readable without authentication for update checks to work.
+
+## 10. Assumptions
 
 - Week starts Monday by default (Poland); configurable.
 - Default visible hours are the full day; zoom and auto-scroll keep the relevant part in view.

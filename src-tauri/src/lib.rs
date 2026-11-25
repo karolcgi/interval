@@ -28,6 +28,8 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(db::Db::default())
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Show Interval", true, None::<&str>)?;

@@ -2210,3 +2210,21 @@ textarea.field {
     transition: none !important;
   }
 }
+
+.update-card {
+  display: grid;
+  gap: 6px;
+  padding: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+.update-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.update-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-4);
+}
