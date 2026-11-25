@@ -23,4 +23,5 @@ if (kind === "mini" || kind === "popup") {
     </StrictMode>,
   );
   void boot();
+  void import("./sound").then((m) => m.unlockAudio());
 }

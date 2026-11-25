@@ -439,6 +439,50 @@ async function stopImpl(at = Date.now()): Promise<void> {
 }
 export const stop = (at = Date.now()) => serial(() => stopImpl(at));
 
+/**
+ * Abandon: throw the current focus phase or break away as if it never ran. Its sessions (every segment
+ * since the phase started, across pauses) and its focus-history row are deleted, and a linked block goes
+ * back to planned. Earlier rounds of the cycle stay recorded.
+ */
+async function abandonImpl(at = Date.now()): Promise<void> {
+  const s = store.get();
+  const f = s.focus;
+  const tx = new Tx(at);
+  if (f && isActivePhase(f)) {
+    const db = s.db;
+    const mode: SessionMode = f.kind;
+    const inPhase = db ? (await repo.listSessions(db, f.phaseStart, at + 1)).filter((x) => x.startAt >= f.phaseStart && x.mode === mode) : [];
+    for (const x of inPhase) tx.deleteSession(x);
+    if (tx.running && tx.running.startAt >= f.phaseStart) tx.deleteSession(tx.running);
+    tx.deleteRun(f.runId);
+    if (f.phase === "focus") await tx.blockStatus(f.blockId, "planned");
+  } else if (!f && (s.running || s.paused)) {
+    if (s.running) tx.deleteSession(s.running);
+    await tx.blockStatus(s.running?.blockId ?? s.paused?.blockId ?? null, "planned");
+  } else return;
+  tx.running = null;
+  tx.paused = null;
+  tx.acc = 0;
+  await tx.commit(null);
+  A.toast("Session discarded · nothing recorded");
+}
+export const abandon = (at = Date.now()) => serial(() => abandonImpl(at));
+
+/** Set the length of the running countdown phase (or of the next Pomodoro focus round when idle). */
+async function setLengthImpl(minutes: number, at = Date.now()): Promise<void> {
+  const m = Math.max(1, Math.min(600, Math.round(minutes)));
+  const f = store.get().focus;
+  if (f && isActivePhase(f) && f.phaseMs !== null) {
+    const tx = new Tx(at);
+    const next = { ...f, phaseMs: m * MINUTE };
+    tx.run(next, at, null);
+    await tx.commit(next);
+    return;
+  }
+  if (!f || !isActivePhase(f)) await A.updateSettings({ pomodoroFocus: m });
+}
+export const setLength = (minutes: number, at = Date.now()) => serial(() => setLengthImpl(minutes, at));
+
 /** Restart the current phase from its full length (time so far stays recorded). Idle/waiting: clear the cycle. */
 async function resetImpl(at = Date.now()): Promise<void> {
   const f = store.get().focus;
@@ -590,8 +634,10 @@ async function dismissImpl(): Promise<void> {
 export const dismiss = () => serial(() => dismissImpl());
 
 /** Change what the timer is about (category, tags, name, block) for the running phase and later rounds. */
-export function setTarget(patch: { categoryId?: Id; tagIds?: Id[]; title?: string | null; blockId?: Id | null }) {
-  return serial(async () => {
+type TargetPatch = { categoryId?: Id; tagIds?: Id[]; title?: string | null; blockId?: Id | null };
+export const setTarget = (patch: TargetPatch) => serial(() => setTargetImpl(patch));
+function setTargetImpl(patch: TargetPatch): Promise<void> {
+  return (async () => {
     const s = store.get();
     const f = s.focus;
     const r = s.running;
@@ -610,7 +656,7 @@ export function setTarget(patch: { categoryId?: Id; tagIds?: Id[]; title?: strin
     const next = f ? { ...f, ...merged } : null;
     if (next && isActivePhase(next)) tx.run(next, tx.at, null);
     await tx.commit(next);
-  });
+  })();
 }
 
 // ------------------------------------------------------------------------- old entry points
@@ -741,7 +787,12 @@ export type TimerCommand =
   | "finish"
   | "extendFocus5"
   | "extendBreak5"
-  | "dismiss";
+  | "dismiss"
+  | "abandon"
+  | { type: "target"; categoryId?: Id; title?: string | null }
+  | { type: "length"; minutes: number }
+  | { type: "onTop"; on: boolean }
+  | { type: "start"; kind?: FocusKind; categoryId?: Id; title?: string | null };
 
 /**
  * Runs a command sent by another window, the tray or a global shortcut. `rev` is the state revision the
@@ -779,6 +830,17 @@ export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void
         return extendCompletedImpl(5);
       case "dismiss":
         return dismissImpl();
+      case "abandon":
+        return abandonImpl();
+    }
+    if (typeof cmd === "object") {
+      if (cmd.type === "target") return setTargetImpl({ ...(cmd.categoryId ? { categoryId: cmd.categoryId } : {}), ...(cmd.title !== undefined ? { title: cmd.title?.trim() || null } : {}) });
+      if (cmd.type === "length") return setLengthImpl(cmd.minutes);
+      if (cmd.type === "onTop") return void (await A.updateSettings({ miniOnTop: cmd.on }));
+      if (cmd.type === "start") {
+        if (f && isActivePhase(f)) return;
+        return startImpl(cmd.kind ?? store.get().settings.focusTimerMode, { ...(cmd.categoryId ? { categoryId: cmd.categoryId } : {}), ...(cmd.title ? { title: cmd.title.trim() } : {}) });
+      }
     }
   });
 }

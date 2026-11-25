@@ -87,6 +87,7 @@ try {
 
   // --------------------------------------------------------------- shortcuts
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Keyboard" }).click();
   await page.getByRole("button", { name: "Shortcut for Jump to today" }).click();
   await page.keyboard.press("g");
   await expectText(page.getByRole("button", { name: "Shortcut for Jump to today" }), /^G$/, "rebound to G");

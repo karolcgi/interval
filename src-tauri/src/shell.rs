@@ -46,7 +46,7 @@ pub struct Prefs {
 impl Default for Prefs {
     fn default() -> Self {
         Prefs {
-            close_to_tray: false,
+            close_to_tray: true,
             minimize_to_tray: false,
             mini_auto: true,
             mini_on_top: true,
@@ -241,7 +241,12 @@ pub fn on_tray_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
             if open {
                 close_mini(app);
             } else {
-                let _ = open_mini(app, false);
+                spawn_window(app, |a| {
+                    if let Err(e) = open_mini(a, false) {
+                        eprintln!("floating timer: {e}");
+                    }
+                    refresh_tray(a, true);
+                });
             }
             refresh_tray(app, true);
         }
@@ -259,6 +264,14 @@ pub fn on_tray_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
 }
 
 // ------------------------------------------------------------------------------------ windows
+
+/// Creates a window off the main thread. On Windows, building a webview window from the main thread
+/// (a synchronous command, a menu or window-event handler) deadlocks WebView2 (wry#583), so every
+/// window is created from the async runtime.
+fn spawn_window<R: Runtime, F: FnOnce(&AppHandle<R>) + Send + 'static>(app: &AppHandle<R>, f: F) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { f(&app) });
+}
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
@@ -395,7 +408,15 @@ fn open_popup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
         return Ok(false);
     }
     if let Some(w) = app.get_webview_window("popup") {
-        let _ = w.destroy();
+        // Still open from the previous moment: reload it for this one (a destroyed label can't be reused at once).
+        let _ = w.eval("location.reload()");
+        if prefs.popup_takes_focus {
+            let _ = w.show();
+            let _ = w.set_focus();
+        } else {
+            show_quietly(&w);
+        }
+        return Ok(true);
     }
     let (w, h) = (320.0, 176.0);
     let win = WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("index.html?window=popup".into()))
@@ -457,7 +478,11 @@ pub fn main_went_away<R: Runtime>(app: &AppHandle<R>) {
     let prefs = shell.prefs.lock().unwrap().clone();
     let active = shell.snap.lock().unwrap().active();
     if prefs.mini_auto && active && app.get_webview_window("mini").is_none() {
-        let _ = open_mini(app, true);
+        spawn_window(app, |a| {
+            if let Err(e) = open_mini(a, true) {
+                eprintln!("floating timer: {e}");
+            }
+        });
     }
 }
 
@@ -625,14 +650,40 @@ pub fn set_shell_prefs<R: Runtime>(app: AppHandle<R>, shell: tauri::State<'_, Sh
     refresh_tray(&app, old.mini_click_through != prefs.mini_click_through);
 }
 
+// Window-creating commands are async: they run on the async runtime, not the main thread (see spawn_window).
 #[tauri::command]
-pub fn mini_show<R: Runtime>(app: AppHandle<R>, open: bool) -> Result<(), String> {
+pub async fn mini_show<R: Runtime>(app: AppHandle<R>, open: bool) -> Result<(), String> {
     if open {
         open_mini(&app, false).map_err(|e| e.to_string())
     } else {
         close_mini(&app);
         Ok(())
     }
+}
+
+/// Grow the floating timer for its edit view (name, category, length) and shrink it back. The window
+/// keeps its bottom edge, and is pulled back inside the monitor's work area when it would overflow.
+#[tauri::command]
+pub async fn mini_expand<R: Runtime>(app: AppHandle<R>, expanded: bool, height: Option<f64>) -> Result<(), String> {
+    let Some(w) = app.get_webview_window("mini") else { return Ok(()) };
+    let layout = app.state::<Shell>().prefs.lock().unwrap().mini_layout.clone();
+    let (bw, bh) = mini_size(&layout);
+    let (lw, lh) = if expanded { (bw.max(288.0), height.unwrap_or(330.0)) } else { (bw, bh) };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let before = w.outer_size().map_err(|e| e.to_string())?;
+    let pos = w.outer_position().map_err(|e| e.to_string())?;
+    let new_h = (lh * scale) as i32;
+    let mut y = pos.y + before.height as i32 - new_h;
+    let mut x = pos.x;
+    if let Ok(Some(m)) = w.current_monitor() {
+        let a = m.work_area();
+        let new_w = (lw * scale) as i32;
+        y = y.clamp(a.position.y, a.position.y + a.size.height as i32 - new_h);
+        x = x.clamp(a.position.x, a.position.x + a.size.width as i32 - new_w);
+    }
+    w.set_size(tauri::LogicalSize::new(lw, lh)).map_err(|e| e.to_string())?;
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    Ok(())
 }
 
 #[tauri::command]
@@ -646,7 +697,7 @@ pub fn mini_click_through<R: Runtime>(app: AppHandle<R>, on: bool) {
 }
 
 #[tauri::command]
-pub fn popup_show<R: Runtime>(app: AppHandle<R>) -> Result<bool, String> {
+pub async fn popup_show<R: Runtime>(app: AppHandle<R>) -> Result<bool, String> {
     open_popup(&app).map_err(|e| e.to_string())
 }
 

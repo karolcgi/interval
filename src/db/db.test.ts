@@ -406,6 +406,40 @@ describe("focus timer engine", () => {
       expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
     }));
 
+  it("abandon discards the current phase across pauses; earlier rounds stay recorded", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 25) + 2_000); // round 1 done, break running
+      await F.skip(); // straight into round 2
+      await advance(t(2026, 11, 25, 9, 35));
+      await F.pause();
+      await advance(t(2026, 11, 25, 9, 40));
+      await F.resume();
+      await advance(t(2026, 11, 25, 9, 45));
+      expect((await all(db)).filter((x) => x.categoryId === catId("Studying")).length).toBe(3);
+      await F.abandon();
+      expect(store.get().focus).toBeNull();
+      expect(store.get().running).toBeNull();
+      expect(store.get().paused).toBeNull();
+      const left = await all(db);
+      expect(left.filter((x) => x.categoryId === catId("Studying")).map(span)).toEqual([[t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)]]);
+      expect((await runs(db)).filter((r) => r.phase === "focus").map((r) => r.round)).toEqual([1]);
+    }));
+
+  it("set length changes the running phase, or the next round when idle", () =>
+    withClock(async () => {
+      await F.setLength(40);
+      expect(store.get().settings.pomodoroFocus).toBe(40);
+      await F.startPomodoro({ categoryId: catId("Studying") }, { ...P25, focus: 40 });
+      await advance(t(2026, 11, 25, 9, 5));
+      await F.setLength(10);
+      expect(store.get().focus?.phaseMs).toBe(10 * MINUTE);
+      await advance(t(2026, 11, 25, 9, 10) + 2_000);
+      expect(store.get().focus?.phase).toBe("break");
+      await F.runCommand({ type: "target", title: "  Lookdev  " });
+      expect(store.get().focus?.title).toBe("Lookdev");
+    }));
+
   it("sleep during focus pauses at the last moment Interval was alive; nothing is recorded while asleep", () =>
     withClock(async (db) => {
       await F.startPomodoro({ categoryId: catId("Studying") }, P25);

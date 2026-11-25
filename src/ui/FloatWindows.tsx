@@ -3,13 +3,14 @@
 // broadcasts and sends commands back. Neither runs a timer of its own; the clock is derived from the
 // snapshot's timestamps, so every window shows the same time.
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, Square, X } from "lucide-react";
+import { AppWindow, Pause, Pencil, Pin, PinOff, Play, SmilePlus, Square, Trash2, X } from "lucide-react";
 import { clockValue, isBreakStatus, progressValue, type TimerSnapshot } from "../domain/focus";
 import { fmtClock, fmtDuration } from "../domain/format";
-import { closeWindow, onSnapshot, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
+import { closeWindow, miniExpand, onSnapshot, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
 import type { TimerCommand } from "../state/focus";
 import { isTauri } from "../platform";
-import { CycleDots } from "./FocusPanel";
+import { AbandonConfirm, CycleDots } from "./FocusPanel";
+import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
 
 function useBroadcast(): TimerBroadcast | null {
   const [snap, setSnap] = useState<TimerBroadcast | null>(null);
@@ -64,15 +65,35 @@ export function MiniTimerApp() {
   const snap = useBroadcast();
   const now = useClock();
   const drag = useWindowDrag();
+  const [editing, setEditing] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Fit the window to the edit view while it's open.
+  useEffect(() => {
+    if (!editing) return void miniExpand(false);
+    const el = rootRef.current;
+    let last = 0;
+    const fit = () => {
+      const h = Math.ceil(el?.querySelector(".mt-edit")?.getBoundingClientRect().bottom ?? el?.scrollHeight ?? 330) + 10;
+      if (Math.abs(h - last) > 2) (last = h), void miniExpand(true, h);
+    };
+    fit();
+    // Refit when the edit view grows or shrinks (emoji picker, abandon confirm, break vs focus)
+    const edit = el?.querySelector(".mt-edit");
+    if (!edit || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(edit);
+    return () => ro.disconnect();
+  }, [editing, snap?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!snap) return <div className="float-root mini" />;
-  const send = (cmd: TimerCommand) => sendCommand(cmd, snap.rev);
+  const send = (cmd: TimerCommand) => sendCommand(cmd, typeof cmd === "string" ? snap.rev : null);
   const t = tone(snap);
   const running = snap.status === "focusing" || snap.status === "short_break" || snap.status === "long_break";
   const paused = snap.status === "focus_paused" || snap.status === "break_paused";
   const progress = progressValue(snap, now);
-  const value = snap.status === "idle" ? "--:--" : snap.status === "completed" ? fmtClock(snap.frozenMs ?? 0) : fmtClock(clockValue(snap, now));
+  const idle = snap.status === "idle";
+  const value = idle ? (snap.ui.mode === "pomodoro" ? fmtClock(snap.ui.focusMin * 60_000) : "00:00") : snap.status === "completed" ? fmtClock(snap.frozenMs ?? 0) : fmtClock(clockValue(snap, now));
   const name = isBreakStatus(snap.status) ? snap.label : snap.title || snap.categoryName || snap.label;
-  const compact = snap.ui.layout === "compact";
+  const compact = snap.ui.layout === "compact" && !editing;
 
   const toggle =
     snap.status === "completed" ? (
@@ -89,17 +110,18 @@ export function MiniTimerApp() {
       </button>
     );
   const stop = (
-    <button className="mt-btn" onClick={() => send(snap.status === "completed" ? "finish" : "stop")} aria-label="Stop" title="Stop" disabled={snap.status === "idle"}>
+    <button className="mt-btn" onClick={() => send(snap.status === "completed" ? "finish" : "stop")} aria-label="Stop" title="Stop and record" disabled={idle}>
       <Square size={10} fill="currentColor" />
     </button>
   );
 
   return (
     <div
-      className={`float-root mini tone-${t} ${compact ? "compact" : "standard"} ${paused ? "is-paused" : ""} ${snap.ui.clickThrough ? "through" : ""}`}
-      style={{ ["--float-opacity" as string]: String(snap.ui.opacity), ["--c" as string]: snap.color || "var(--text-3)" }}
-      title="Double-click to open Interval"
-      {...drag}
+      ref={rootRef}
+      className={`float-root mini tone-${t} ${compact ? "compact" : "standard"} ${editing ? "editing" : ""} ${paused ? "is-paused" : ""} ${snap.ui.clickThrough ? "through" : ""}`}
+      style={{ ["--float-opacity" as string]: String(editing ? 1 : snap.ui.opacity), ["--c" as string]: snap.color || "var(--text-3)" }}
+      title={editing ? undefined : "Double-click to open Interval"}
+      {...(editing ? {} : drag)}
     >
       {compact ? (
         <>
@@ -112,11 +134,20 @@ export function MiniTimerApp() {
         </>
       ) : (
         <>
-          <div className="mt-top">
+          <div className="mt-top" {...(editing ? drag : {})}>
             <span className="mt-dot" aria-hidden />
             <span className="mt-name" title={name}>
-              {snap.status === "idle" ? "No timer running" : name}
+              {idle ? "Ready" : name}
             </span>
+            <button className={`mt-close ${snap.ui.onTop ? "on" : ""}`} onClick={() => send({ type: "onTop", on: !snap.ui.onTop })} aria-label={snap.ui.onTop ? "Stop keeping on top" : "Keep on top"} aria-pressed={snap.ui.onTop} title={snap.ui.onTop ? "On top of other windows (click to release)" : "Keep on top of other windows"}>
+              {snap.ui.onTop ? <Pin size={11} /> : <PinOff size={11} />}
+            </button>
+            <button className={`mt-close ${editing ? "on" : ""}`} onClick={() => setEditing(!editing)} aria-label="Edit session" aria-expanded={editing} title="Name, category, length">
+              <Pencil size={11} />
+            </button>
+            <button className="mt-close" onClick={() => void restoreMain()} aria-label="Open Interval" title="Open Interval">
+              <AppWindow size={11} />
+            </button>
             <button className="mt-close" onClick={() => void closeWindow("mini")} aria-label="Close floating timer" title="Close">
               <X size={11} />
             </button>
@@ -140,8 +171,123 @@ export function MiniTimerApp() {
             </span>
             {snap.next && <span className="mt-next">Next · {snap.next}</span>}
           </div>
+          {editing && <MiniEdit snap={snap} send={send} onDone={() => setEditing(false)} />}
         </>
       )}
+    </div>
+  );
+}
+
+const LENGTHS = [15, 25, 50, 90];
+
+/** The floating timer's edit view: name the session, pick its category and length, abandon it. */
+function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: TimerCommand) => void; onDone: () => void }) {
+  const idle = snap.status === "idle";
+  const onBreak = isBreakStatus(snap.status);
+  const active = !idle && snap.status !== "completed";
+  const [title, setTitle] = useState(snap.title ?? "");
+  const [cat, setCat] = useState<string | null>(snap.categoryId ?? snap.ui.categories[0]?.id ?? null);
+  const [custom, setCustom] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  useEffect(() => setTitle(snap.title ?? ""), [snap.title]);
+  useEffect(() => {
+    if (!onBreak && snap.categoryId) setCat(snap.categoryId);
+  }, [snap.categoryId, onBreak]);
+  const currentLen = active && snap.phaseMs ? Math.round(snap.phaseMs / 60_000) : snap.ui.focusMin;
+  const commitTitle = () => {
+    if (!idle && !onBreak && (title.trim() || null) !== (snap.title ?? null)) send({ type: "target", title });
+  };
+  const pickCat = (id: string) => {
+    setCat(id);
+    if (!idle && !onBreak) send({ type: "target", categoryId: id });
+  };
+  const setLen = (m: number) => send({ type: "length", minutes: m });
+  const showLength = snap.ui.mode === "pomodoro" ? !(active && !snap.countdown) : active && !!snap.countdown;
+  return (
+    <div className="mt-edit">
+      {!onBreak && (
+        <>
+          <div className="mt-name-row">
+          <button className={`emoji-trigger sm ${startsWithEmoji(title) ? "has" : ""}`} onClick={() => setEmojiOpen((v) => !v)} aria-label="Session icon" title="Put an emoji in front of the name">
+            {leadingEmoji(title) ?? <SmilePlus size={13} />}
+          </button>
+          <input
+            className="mt-input"
+            placeholder="Name this session…"
+            value={title}
+            maxLength={120}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") onDone();
+            }}
+            aria-label="Session name"
+          />
+          </div>
+          {emojiOpen && (
+            <EmojiPicker
+              className="inline"
+              canClear={startsWithEmoji(title)}
+              onPick={(e) => {
+                const next = withLeadingEmoji(title, e);
+                setTitle(next);
+                if (!idle && !onBreak) send({ type: "target", title: next });
+              }}
+              onClose={() => setEmojiOpen(false)}
+            />
+          )}
+          <div className="mt-cats" role="listbox" aria-label="Category">
+            {snap.ui.categories.map((c) => (
+              <button key={c.id} role="option" aria-selected={c.id === cat} className={`mt-cat ${c.id === cat ? "on" : ""}`} style={{ ["--cc" as string]: c.color }} onClick={() => pickCat(c.id)} title={c.name}>
+                <span className="mt-cat-dot" aria-hidden>
+                  {c.icon ?? ""}
+                </span>
+                <span className="mt-cat-name">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {showLength && (
+        <div className="mt-lengths" role="group" aria-label="Length in minutes">
+          {LENGTHS.map((m) => (
+            <button key={m} className={`mt-len ${m === currentLen ? "on" : ""}`} onClick={() => setLen(m)}>
+              {m}
+            </button>
+          ))}
+          <input
+            className="mt-input mt-len-input"
+            inputMode="numeric"
+            placeholder={LENGTHS.includes(currentLen) ? "min" : String(currentLen)}
+            value={custom}
+            onChange={(e) => setCustom(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && Number(custom) > 0) (setLen(Number(custom)), setCustom(""));
+            }}
+            onBlur={() => Number(custom) > 0 && (setLen(Number(custom)), setCustom(""))}
+            aria-label="Custom length in minutes"
+          />
+        </div>
+      )}
+      <div className="mt-edit-foot">
+        {idle ? (
+          <button className="btn btn-focus sm" onClick={() => (send({ type: "start", categoryId: cat ?? undefined, title: title.trim() || null }), onDone())}>
+            <Play size={11} fill="currentColor" /> Start {snap.ui.mode === "pomodoro" ? `${currentLen} min` : ""}
+          </button>
+        ) : active ? (
+          <button className="btn btn-ghost sm mt-abandon" onClick={() => setConfirm(true)} title="Discard this session: nothing is recorded">
+            <Trash2 size={11} /> Abandon
+          </button>
+        ) : (
+          <span />
+        )}
+        <button className="btn btn-ghost sm" onClick={onDone}>
+          Done
+        </button>
+      </div>
+      {confirm && <AbandonConfirm onBreak={onBreak} onDone={() => setConfirm(false)} onConfirm={() => (send("abandon"), onDone())} />}
     </div>
   );
 }

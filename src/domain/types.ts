@@ -13,7 +13,9 @@ export interface Category {
   id: Id;
   name: string;
   color: string; // hex, e.g. #8298d7
-  icon: string | null; // lucide icon name
+  icon: string | null; // lucide icon name (v1, unused)
+  /** Optional emoji shown before the name. */
+  emoji?: string | null;
   parentId: Id | null; // optional subcategory parent
   sortOrder: number;
   shortcut: string | null; // single key, e.g. "1" or "f"
@@ -150,6 +152,8 @@ export interface Settings {
   showActualLane: boolean;
   rightPanelOpen: boolean;
   sidebarOpen: boolean;
+  /** Left sidebar width in px; null = the theme's default. */
+  sidebarWidth: number | null;
   defaultBlockMinutes: number;
   timeFormat: "24h" | "12h";
   // Focus (Phase 2)
@@ -218,6 +222,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showActualLane: true,
   rightPanelOpen: true,
   sidebarOpen: true,
+  sidebarWidth: null,
   defaultBlockMinutes: 60,
   timeFormat: "24h",
   pomodoroFocus: 25,
@@ -228,7 +233,7 @@ export const DEFAULT_SETTINGS: Settings = {
   breakReminderMinutes: 90,
   notifications: true,
   sounds: true,
-  closeToTray: false,
+  closeToTray: true,
   workdayHours: 8,
   reviewPrompts: true,
   backupDir: null,

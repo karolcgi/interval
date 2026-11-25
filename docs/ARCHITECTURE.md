@@ -252,8 +252,26 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
   mini/popup windows (created hidden, shown with `SW_SHOWNOACTIVATE` so they never take focus), saves the mini position,
   and on Windows checks whether the foreground window covers its monitor (fullscreen) to hide the mini timer and hold the popup.
   All windows share one WebView2 environment, so every window must use the same `additionalBrowserArgs`.
+- **Windows are never built on the main thread.** On Windows, building a WebView2 window from a synchronous command or
+  a menu/window-event handler deadlocks (wry#583). `mini_show`/`popup_show` are async commands and shell-side opens go
+  through `spawn_window`. A still-open popup is reloaded rather than destroyed and rebuilt under the same label.
+- **Sounds play through Web Audio** (fetch + `decodeAudioData`), not `<audio>`, so they don't depend on the webview's
+  media pipeline on the app protocol. The context is resumed on the first click/key.
+- **Desktop test**: `npm run e2e:desktop` drives the release binary with tauri-driver/WebKitWebDriver (Linux, Xvfb).
 - **Sounds** are synthesized by `scripts/make-sounds.mjs` (original, see `public/sounds/LICENSE.txt`). Custom files are
   copied into `<data dir>/sounds` by `import_sound` and read back only from there.
+
+## v0.5 notes
+
+- **Abandon** (`focus.ts › abandon`) deletes the current phase's sessions (all segments since `phaseStart`, across
+  pauses), the `focus_runs` row and the running session, and puts a linked block back to planned. Earlier rounds stay.
+- **Mini timer commands**: `target` (title/category), `length` (sets `phaseMs` of the running countdown, or the
+  Pomodoro focus length when idle), `start` (kind/category/title), `onTop`. The edit view resizes its window through
+  `mini_expand`, which keeps the bottom edge in place and clamps to the work area.
+- **Category emoji**: migration v5 adds `categories.emoji`. `CatDot` renders the emoji instead of the dot when set.
+  Title emoji are plain text at the start of the title (`EmojiPicker.tsx › withLeadingEmoji`), so no schema change.
+  The picker is a curated offline set with keyword search.
+- **Close to tray** defaults to on (Rust `CLOSE_TO_TRAY` and the setting default agree).
 
 ## Roadmap notes
 

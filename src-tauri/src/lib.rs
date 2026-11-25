@@ -7,7 +7,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, WindowEvent};
 
 /// When true, closing the window hides it to the tray instead of quitting (Settings › Focus timer).
-pub(crate) static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+pub(crate) static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 
 /// Updates the tray tooltip (kept for older frontends; the shell now owns the tooltip).
 #[tauri::command]
@@ -83,6 +83,7 @@ pub fn run() {
             shell::mini_show,
             shell::mini_is_open,
             shell::mini_click_through,
+            shell::mini_expand,
             shell::popup_show,
             shell::popup_close,
             shell::restore_main,
