@@ -2,6 +2,7 @@
 //   npm run e2e:phase3
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { nav } from "./nav.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const OUT = new URL("./artifacts/", import.meta.url);
@@ -44,7 +45,7 @@ try {
   await page.locator(".tl-col").first().waitFor({ timeout: 30000 });
 
   // ---------------------------------------------------------------- progress
-  await page.locator(".nav-item", { hasText: "Progress" }).click();
+  await nav(page, "Progress");
   await expectText(page.locator(".skill"), /#Houdini/, "Houdini is a skill");
   await expectText(page.locator(".skill").filter({ hasText: "#Houdini" }), /Lv \d/, "with a level");
   await expectText(page.locator(".skill").filter({ hasText: "#Houdini" }), /h to \d/, "and hours to the next milestone");
@@ -64,7 +65,7 @@ try {
   ok("Personal achievement recorded; a skill can be hidden and shown again");
 
   // ----------------------------------------------------------------- reviews
-  await page.locator(".nav-item", { hasText: "Reviews" }).click();
+  await nav(page, "Reviews");
   await expectText(page.locator(".rev-title"), /^Week \d+, \d{4}/, "last week by default");
   await expectText(page.locator(".rev-kpis"), /vs last week/, "compared with the previous week");
   await expectText(page.locator(".rev-cols"), /Freelance work/, "categories listed");
@@ -86,7 +87,7 @@ try {
   ok("Monthly review and year in review with skills gained and milestones");
 
   // --------------------------------------------------------------- shortcuts
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await nav(page, "Settings");
   await page.getByRole("tab", { name: "Keyboard" }).click();
   await page.getByRole("button", { name: "Shortcut for Jump to today" }).click();
   await page.keyboard.press("g");

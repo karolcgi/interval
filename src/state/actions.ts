@@ -5,7 +5,7 @@ import { store, type AppState, type CalendarMode, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
 import { normalizeFocus } from "../domain/focus";
 import * as repo from "../db/repo";
-import type { Block, Budget, PersonalAchievement, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, Budget, PersonalAchievement, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag, WeekTemplateBlock } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { ensureOccurrences } from "./planning";
 import * as Focus from "./focus";
@@ -39,13 +39,15 @@ export function reportError(e: unknown) {
 
 export type Change =
   | { type: "block"; before: Block | null; after: Block | null }
-  | { type: "session"; before: Session | null; after: Session | null };
+  | { type: "session"; before: Session | null; after: Session | null }
+  | { type: "tblock"; before: WeekTemplateBlock | null; after: WeekTemplateBlock | null };
 
 const undoStack: Array<{ label: string; changes: Change[] }> = [];
 const redoStack: Array<{ label: string; changes: Change[] }> = [];
 const MAX_UNDO = 200;
 
-function stmtsFor(type: Change["type"], id: Id, row: Block | Session | null): Statement[] {
+function stmtsFor(type: Change["type"], id: Id, row: Block | Session | WeekTemplateBlock | null): Statement[] {
+  if (type === "tblock") return [row ? repo.upsertWeekBlockStmt(row as WeekTemplateBlock) : repo.deleteWeekBlockStmt(id)];
   if (type === "block") return row ? repo.upsertBlockStmts(row as Block) : repo.deleteBlockStmts(id);
   return row ? repo.upsertSessionStmts(row as Session) : repo.deleteSessionStmts(id);
 }
@@ -67,6 +69,7 @@ function forward(changes: Change[]): Statement[] {
       .sort((a, b) => Number(a.after?.endAt === null) - Number(b.after?.endAt === null))
       .flatMap((c) => stmtsFor("session", idOf(c), c.after)),
     ...blocks.filter((c) => !c.after).flatMap((c) => stmtsFor("block", idOf(c), null)),
+    ...changes.filter((c) => c.type === "tblock").flatMap((c) => stmtsFor("tblock", idOf(c), c.after)),
   ];
 }
 
@@ -143,13 +146,15 @@ export async function refresh() {
   const today = startOfDay(Date.now());
   await ensureOccurrences(Math.max(range.end - 1, addDays(today, 14)));
   if (seq !== refreshSeq) return;
-  const [blocks, sessions, tBlocks, tSessions, running, note] = await Promise.all([
+  const [blocks, sessions, tBlocks, tSessions, running, note, weekTemplate, dismissals] = await Promise.all([
     repo.listBlocks(s.db, range.start, range.end),
     repo.listSessions(s.db, range.start, range.end),
     repo.listBlocks(s.db, today, addDays(today, 1)),
     repo.listSessions(s.db, today, addDays(today, 1)),
     repo.getRunningSession(s.db),
     repo.getDailyNote(s.db, dayKey(s.date)),
+    repo.listWeekTemplate(s.db),
+    repo.listDismissals(s.db, dayKey(Math.min(range.start, today)), dayKey(Math.max(range.end - 1, today))),
   ]);
   if (seq !== refreshSeq) return; // a newer refresh superseded this one
   const sel = s.selection;
@@ -162,12 +167,15 @@ export async function refresh() {
     running,
     dailyNote: note,
     selection: selectionAlive ? sel : null,
+    weekTemplate,
+    dismissed: new Set(dismissals.map((d) => `${d.day}|${d.templateBlockId}`)),
+    tplSelection: s.tplSelection && weekTemplate.some((t) => t.id === s.tplSelection) ? s.tplSelection : null,
   });
 }
 
 export async function reloadMeta() {
   const d = db();
-  const [categories, tags, settings, paused, acc, rules, templates, budgets, achievements] = await Promise.all([
+  const [categories, tags, settings, paused, acc, rules, templates, budgets, achievements, presets] = await Promise.all([
     repo.listCategories(d),
     repo.listTags(d),
     repo.loadSettings(d),
@@ -177,9 +185,10 @@ export async function reloadMeta() {
     repo.listTemplates(d),
     repo.listBudgets(d),
     repo.listAchievements(d),
+    repo.listPresets(d),
   ]);
   const focus = normalizeFocus(await repo.getSetting<unknown>(d, "timer.focus"));
-  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, achievements, focus });
+  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, achievements, focus, presets });
 }
 
 // -------------------------------------------------------------- navigation
@@ -587,7 +596,7 @@ export async function toggleTimer() {
   if (f?.phase === "ready" || f?.phase === "done") return Focus.nextRound();
   if (f?.phase === "break") return Focus.stop();
   const sel = s.selection;
-  if (sel?.kind === "block") return startTimer({ blockId: sel.id });
+  if (sel?.kind === "block") return (await import("./library")).startFromBlock(sel.id); // may offer the preset's focus timer
   return startTimer({});
 }
 

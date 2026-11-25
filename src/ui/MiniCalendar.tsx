@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCollapsed } from "./SideSection";
 import { useApp } from "../state/store";
 import * as A from "../state/actions";
 import { addDays, addMonths, dayKey, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
@@ -10,6 +11,7 @@ export function MiniCalendar() {
   const mode = useApp((s) => s.calendarMode);
   const weekStartsOn = useApp((s) => s.settings.weekStartsOn);
   const [month, setMonth] = useState(startOfMonth(date));
+  const [collapsed, toggle] = useCollapsed("calendar");
   useEffect(() => setMonth(startOfMonth(date)), [date]);
 
   const gridStart = startOfWeek(month, weekStartsOn);
@@ -21,16 +23,24 @@ export function MiniCalendar() {
   const labels = Array.from({ length: 7 }, (_, i) => fmt.weekdayShort(addDays(gridStart, i)).slice(0, 2));
 
   return (
-    <div className="mini-cal">
+    <div className={`mini-cal ${collapsed ? "collapsed" : ""}`} aria-label="Calendar">
       <div className="mini-cal-head">
-        <span className="mini-cal-title">{fmt.monthYear(month)}</span>
-        <button className="icon-btn sm" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month">
-          <ChevronLeft size={14} />
+        <button className="side-toggle mini-cal-title" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? "Show calendar" : "Hide calendar"}>
+          <span>{fmt.monthYear(month)}</span>
+          <ChevronDown size={12} className={`ftp-chev ${collapsed ? "closed" : ""}`} />
         </button>
-        <button className="icon-btn sm" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month">
-          <ChevronRight size={14} />
-        </button>
+        {!collapsed && (
+          <>
+            <button className="icon-btn sm" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month">
+              <ChevronLeft size={14} />
+            </button>
+            <button className="icon-btn sm" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month">
+              <ChevronRight size={14} />
+            </button>
+          </>
+        )}
       </div>
+      {!collapsed && (
       <div className="mini-cal-grid">
         {labels.map((l, i) => (
           <span key={i} className="mini-cal-dow">
@@ -53,6 +63,7 @@ export function MiniCalendar() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

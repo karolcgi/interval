@@ -7,6 +7,7 @@
 
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { nav } from "./nav.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const OUT = new URL("./artifacts/", import.meta.url);
@@ -121,11 +122,11 @@ try {
 
   const colourOf = () => first.evaluate((el) => el.style.getPropertyValue("--c"));
   const before = await colourOf();
-  await page.getByRole("button", { name: "Categories" }).click();
+  await nav(page, "Categories");
   const row = page.locator(`.cat-grid[data-name="Freelance work"]`);
   await row.getByLabel("Change colour").click();
   await row.locator("input[type=color]").fill("#e06c75");
-  await page.locator(".nav-item", { hasText: "Today" }).click();
+  await nav(page, "Today");
   const after = await colourOf();
   if (after !== "#e06c75" || before === after) await fail(`block colour did not follow the category (${before} -> ${after})`);
   ok("Changing a category colour recolours its blocks");
@@ -139,7 +140,7 @@ try {
   ok("Reopened the app one week later");
 
   // 8-9. Statistics, Last week, studying hours
-  await page.getByRole("button", { name: "Statistics" }).click();
+  await nav(page, "Statistics");
   await page.getByRole("tab", { name: "Last week" }).click();
   await expectText(page.locator(".kpi"), /Recorded\s*1h 10m/, "last week recorded");
   await expectText(page.locator(".dist li"), /Studying\s*1\.2h/, "studying hours");
@@ -159,7 +160,7 @@ try {
   await page.screenshot({ path: new URL("stats.png", OUT).pathname });
 
   // Data integrity after reopen: both blocks still on Nov 25
-  await page.locator(".nav-item", { hasText: "Today" }).click();
+  await nav(page, "Today");
   await page.keyboard.press("ArrowLeft");
   for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowLeft");
   await expectText(page.locator(".cal-title"), /November 25/, "navigate back");
@@ -168,7 +169,7 @@ try {
   ok("Both blocks persisted across reload");
 
   // 13. Export
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await nav(page, "Settings");
   await page.getByRole("tab", { name: "Data & updates" }).click();
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV" }).click()]);
   const csvPath = new URL("export.csv", OUT).pathname;

@@ -3,6 +3,12 @@ import { bindings, comboOf } from "../state/shortcuts";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { PresetsView } from "./PresetsView";
+import { TemplateView } from "./TemplateView";
+import { PresetDragChip } from "./PresetLibrary";
+import { FocusOfferCard } from "./FocusOffer";
+import * as L from "../state/library";
 import { CalendarView } from "./CalendarView";
 import { RightPanel } from "./RightPanel";
 import { StatsView } from "./StatsView";
@@ -56,7 +62,8 @@ export function App() {
 
   return (
     <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`} style={sidebarWidth ? ({ ["--sidebar-w" as string]: `${sidebarWidth}px` } as React.CSSProperties) : undefined}>
-      {sidebarOpen && <Sidebar />}
+      <TopBar />
+      {sidebarOpen ? <Sidebar /> : <div />}
       {sidebarOpen && <SidebarResizer />}
       <main className="workspace">
         {demo && (
@@ -65,6 +72,8 @@ export function App() {
           </div>
         )}
         {view === "calendar" && <CalendarView />}
+        {view === "presets" && <PresetsView />}
+        {view === "template" && <TemplateView />}
         {view === "stats" && <StatsView />}
         {view === "budgets" && <BudgetsView />}
         {view === "log" && <DayLogView />}
@@ -81,6 +90,8 @@ export function App() {
       <DailyRitual />
       <FocusOverlay />
       <InAppCompletion />
+      <FocusOfferCard />
+      <PresetDragChip />
     </div>
   );
 }
@@ -106,6 +117,7 @@ function useShortcuts() {
       if (isTyping(e) || s.paletteOpen || document.querySelector(".popover-modal")) return;
       if (mod && k === "z" && !e.shiftKey) return e.preventDefault(), void A.undo();
       if ((mod && k === "y") || (mod && e.shiftKey && k === "z")) return e.preventDefault(), void A.redo();
+      if (s.view === "template" && templateKey(e, mod, k)) return;
       const sel = s.selection;
       if (mod && k === "d" && sel?.kind === "block") return e.preventDefault(), void A.duplicateBlock(sel.id);
       if (mod && k === "c" && sel?.kind === "block") return e.preventDefault(), A.copyBlocks([sel.id]);
@@ -136,6 +148,27 @@ function useShortcuts() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+/** Keys in the Template editor act on the selected template block. Returns true when handled. */
+function templateKey(e: KeyboardEvent, mod: boolean, k: string): boolean {
+  const s = store.get();
+  const id = s.tplSelection;
+  const t = id ? s.weekTemplate.find((x) => x.id === id) : undefined;
+  const go = (p: Promise<unknown> | void) => (e.preventDefault(), p && void p.catch(A.reportError), true);
+  if (mod && k === "z") return false; // undo / redo are shared
+  if (mod && k === "d" && t) return go(L.duplicateTemplateBlock(t.id));
+  if (mod && k === "c" && t) return go(L.copyTemplateBlocks([t.id]));
+  if (mod && k === "v") return go(L.pasteIntoTemplate(t?.weekday ?? 0));
+  if ((k === "delete" || k === "backspace") && t) return go(L.deleteTemplateBlocks([t.id]));
+  if (k === "escape") return go(store.set({ tplSelection: null }));
+  if (k === "f2" && t) return go(store.set({ tplRenaming: t.id }));
+  if (k === "arrowleft" || k === "arrowright") return true; // no dates to step through
+  if (t && !mod && !e.altKey) {
+    const cat = s.categories.find((c) => !c.archivedAt && c.shortcut && c.shortcut.toLowerCase() === k);
+    if (cat) return go(L.updateTemplateBlock(t.id, { categoryId: cat.id }, "Change category"));
+  }
+  return false;
 }
 
 function runAction(id: string) {

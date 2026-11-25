@@ -102,6 +102,23 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 | Details panel › Diary: add, retype, edit and delete notes on any recorded session or planned block | ✅ |
 | Quick Capture, daily journal Markdown, journal workspace, Obsidian daily-note sync, notes in reviews | parked (Karol, 2026-11-25) |
 
+## v0.7 status (presets and weekly template)
+
+| Area | State |
+|---|---|
+| Top tabs: Today, Calendar, Statistics, Presets, Template; Time budgets, Progress, Reviews, Day log, Categories & tags and Settings under **More** | ✅ |
+| Sidebar: mini calendar, presets, activities, focus timer, today's totals; calendar/presets/activities collapse and stay collapsed | ✅ |
+| Activity presets: name, category (colour), duration, tags, notes, optional focus-timer preset, favourite | ✅ |
+| Sidebar preset library: drag onto Today, Calendar or Template (live preview with times, snaps, created on drop), drag to reorder, search, category and favourites filters, right-click edit/duplicate/delete | ✅ |
+| Presets tab: search, category chips, favourites, list or grid, sort (custom, name, duration, category), side-panel editor | ✅ |
+| Right-click a block › Save as preset | ✅ |
+| Weekly template: one generic Mon–Sun week on the same timeline; drag to create, drop presets, move, resize, Alt-drag copy, copy to another weekday, copy a whole day, edit category/tags/notes, delete, undo/redo; totals per day and per category | ✅ |
+| Suggestions (ghosts) in Today and Calendar: ~30% opacity, dashed, template icon, Plan lane only; toolbar toggle; none on past days unless turned on in Settings › Calendar | ✅ |
+| Double-click (or right-click) a ghost to plan it; Apply template for the day (no duplicates; overlaps can be skipped or kept); dismiss for one date and restore; Edit original in Template | ✅ |
+| Three layers stay separate: template hours never count as planned or recorded; the day panel shows Suggested / Planned / Actual | ✅ |
+| Starting a block made from a preset with a focus-timer preset offers that timer; nothing starts by itself | ✅ |
+| Import a saved day template into a weekday (Template › Import day) | ✅ |
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.
@@ -174,9 +191,9 @@ because the build also produces the signed update package. Normally CI does this
 ### Tests
 
 ```powershell
-npm test               # 82 unit + integration tests (domain logic and real SQLite)
+npm test               # 106 unit + integration tests (domain logic and real SQLite)
 npx playwright install chromium   # once
-npm run e2e            # Phase 1 acceptance + Phase 2 + Phase 3 workflows, driven through the UI
+npm run e2e            # Phase 1 acceptance, Phase 2/3, focus timer, presets & template workflows, driven through the UI
 npm run typecheck
 ```
 
@@ -218,19 +235,25 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
 
 - **Repeat**: select a block, Details › Repeat. Change an occurrence, then "Apply changes to following" to move the
   rest of the series. Deleting one occurrence never brings it back.
-- **Templates**: the template button in the calendar header saves the current day or applies a saved one.
+- **Presets**: build a library in the Presets tab (or right-click a block › Save as preset), then drag presets from the
+  sidebar onto Today, the Calendar or the Template. Editing a block never changes its preset, and the reverse.
+- **Weekly template**: the Template tab is your ideal week. Its blocks show as dimmed suggestions on matching days.
+  Double-click one to plan it, or press *Apply template* in Today. Right-click to dismiss it for that day only.
+  The layers icon in the calendar header hides or shows suggestions.
+- **Day templates** (older): the template button in the calendar header saves the current day or applies a saved one.
+  Template › Import day copies one into a weekday of the weekly template.
 - **Focus**: the ▾ next to Start offers Pomodoro presets and Flowtime. **F** toggles focus mode. Breaks are recorded
   in your break category, so they show up honestly in statistics.
-- **Budgets**: sidebar › Time budgets. "At least 7 h Studying a week", "at most 1 h of Admin a day". Progress counts recorded time;
+- **Budgets**: More › Time budgets. "At least 7 h Studying a week", "at most 1 h of Admin a day". Progress counts recorded time;
   planned time still ahead shows whether you're on track.
-- **Day log**: sidebar › Day log. An automatic diary of what you actually recorded (time, name, category), one line
+- **Day log**: More › Day log. An automatic diary of what you actually recorded (time, name, category), one line
   per activity. Browse any past day, copy it as Markdown, or save it as `YYYY-MM-DD.md` (Obsidian's daily-note name);
   a whole week or month saves as one file. The details panel shows the selected day's log too.
 - **Daily ritual**: the details panel suggests planning in the morning and a review in the evening (turn it off in Settings).
 
-- **Progress**: sidebar › Progress (or **P**). Every tag is a skill and every category an area. Hide the ones that
+- **Progress**: More › Progress (or **P**). Every tag is a skill and every category an area. Hide the ones that
   aren't skills (client names, say) with the eye icon. Add personal achievements at the bottom.
-- **Reviews**: sidebar › Reviews (or **R**). Last week by default; switch to Month or Year in review, and compare with the
+- **Reviews**: More › Reviews (or **R**). Last week by default; switch to Month or Year in review, and compare with the
   previous period or a year ago. Copy as Markdown or save to Obsidian.
 - **Obsidian**: Settings › Obsidian › Notes folder, pick a folder inside your vault (e.g. `Vault/Interval`). Interval writes
   `Days/2026-11-25.md`, `Weeks/2026-W48.md`, `Months/2026-11.md`, `Years/2026.md`, each with hours in the frontmatter

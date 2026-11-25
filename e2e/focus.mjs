@@ -4,6 +4,7 @@
 //   npm run e2e:focus
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { nav } from "./nav.mjs";
 import { mkdirSync } from "node:fs";
 
 const OUT = new URL("./artifacts/", import.meta.url);
@@ -195,7 +196,7 @@ try {
   ok("Skip to break, skip break, finish");
 
   // 8. Focus history in Statistics
-  await page.locator(".nav-item", { hasText: "Statistics" }).click();
+  await nav(page, "Statistics");
   await page.getByRole("tab", { name: "Today" }).click();
   const fh = page.locator(".focus-history");
   await fh.waitFor();
@@ -233,7 +234,7 @@ try {
   ok(`Sidebar resizes by dragging its edge (${Math.round(w0)} → ${Math.round(w1)}px), is remembered, double-click resets`);
 
   // 10. Abandon: a discarded session leaves no trace in the history
-  await page.locator(".nav-item", { hasText: "Statistics" }).click();
+  await nav(page, "Statistics");
   await page.getByRole("tab", { name: "Today" }).click();
   const sessionsKpi = page.locator(".focus-history .kpi").filter({ hasText: "Focus sessions" }).locator(".kpi-val");
   await expectText(sessionsKpi, /^1$/, "one session before abandoning");
@@ -244,8 +245,8 @@ try {
   await panel.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Discard" }).click();
   await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
   await expectText(page.locator(".toast"), /Session discarded/, "discard toast");
-  await page.locator(".nav-item", { hasText: "Day log" }).click();
-  await page.locator(".nav-item", { hasText: "Statistics" }).click();
+  await nav(page, "Day log");
+  await nav(page, "Statistics");
   await expectText(sessionsKpi, /^1$/, "still one session after abandoning");
   ok("Abandon → confirm discards the running session; history still shows only the earlier session");
 
@@ -276,7 +277,7 @@ try {
   ok("Mini timer: name + emoji, category, 15 min length and Start drive the main timer; pin toggles on-top; abandon works there too");
 
   // 12. Settings are split into tabs
-  await page.locator(".nav-item", { hasText: "Settings" }).click();
+  await nav(page, "Settings");
   for (const [tab, section] of [["General", "Appearance"], ["Alerts & sounds", "Sounds"], ["Floating timer & tray", "Close to tray"], ["Data & updates", "Updates"]]) {
     await page.getByRole("tab", { name: tab }).click();
     await page.getByText(section, { exact: false }).first().waitFor({ timeout: 5000 }).catch(() => fail(`${tab} tab should show ${section}`));
@@ -289,7 +290,7 @@ try {
   ok("Settings are split into tabs; close-to-tray is on by default");
 
   // 13. Category emoji + colours; block title emoji from the inspector
-  await page.locator(".nav-item", { hasText: "Categories" }).click();
+  await nav(page, "Categories");
   const row = page.locator(".cat-grid[data-name='Studying']");
   await row.getByRole("button", { name: "Change colour" }).click();
   const swatches = await row.locator(".swatches .swatch:not(.custom)").count();
@@ -300,7 +301,7 @@ try {
   await page.getByRole("dialog", { name: "Pick an emoji" }).getByRole("button", { name: /📚/ }).click();
   await expectText(page.locator(".sidebar .cat-row", { hasText: "Studying" }).locator(".cat-emoji"), /📚/, "emoji shown in Activities");
   await shot("categories-emoji");
-  await page.locator(".nav-item", { hasText: "Today" }).first().click();
+  await nav(page, "Today");
   const blk = page.locator(".tl-col .block").first();
   await blk.click();
   await page.getByRole("button", { name: "Title icon" }).click();

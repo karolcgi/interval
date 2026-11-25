@@ -216,6 +216,54 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX idx_journal_session ON journal_entries(session_id)`,
     ],
   },
+  {
+    version: 7,
+    name: "presets and weekly template",
+    up: [
+      // Reusable block configurations. Tags are a JSON array (like day templates): presets are never
+      // counted anywhere, so they need no join table for statistics.
+      `CREATE TABLE activity_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+        tag_ids TEXT NOT NULL DEFAULT '[]',
+        notes TEXT,
+        focus_preset_id TEXT,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`,
+      // The one universal weekly template: weekday (0 = Monday) + local start minute + duration.
+      // Suggestions on real days are computed from these at render time and never stored.
+      `CREATE TABLE week_template_blocks (
+        id TEXT PRIMARY KEY,
+        weekday INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+        start_minute INTEGER NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
+        duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+        category_id TEXT NOT NULL,
+        title TEXT,
+        notes TEXT,
+        tag_ids TEXT NOT NULL DEFAULT '[]',
+        preset_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX idx_wtb_weekday ON week_template_blocks(weekday)`,
+      // A suggestion hidden for one date only. Deleting the row restores it.
+      `CREATE TABLE template_dismissals (
+        day TEXT NOT NULL,
+        template_block_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (day, template_block_id)
+      )`,
+      // Where a planned block came from. Independent copies: no foreign keys, nothing cascades.
+      `ALTER TABLE blocks ADD COLUMN preset_id TEXT`,
+      `ALTER TABLE blocks ADD COLUMN template_block_id TEXT`,
+      `CREATE INDEX idx_blocks_template ON blocks(template_block_id)`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

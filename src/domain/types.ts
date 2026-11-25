@@ -46,6 +46,41 @@ export interface Block {
   status: BlockStatus;
   recurrenceId: Id | null;
   tagIds: Id[];
+  /** The activity preset it was dropped from (v0.7). A copy: editing either never changes the other. */
+  presetId?: Id | null;
+  /** The weekly-template block it was confirmed from (v0.7). Hides that suggestion on this date. */
+  templateBlockId?: Id | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A reusable block configuration in the preset library (v0.7). Its colour comes from its category. */
+export interface ActivityPreset {
+  id: Id;
+  name: string;
+  categoryId: Id;
+  durationMinutes: number;
+  tagIds: Id[];
+  notes: string | null;
+  focusPresetId: string | null; // a focus timer preset (settings.focusPresets) to offer when starting
+  favorite: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A block in the one universal weekly template (v0.7): a weekday and a local time, not a date.
+ *  Shown as suggestions ("ghosts") on matching days; never counted anywhere until confirmed. */
+export interface WeekTemplateBlock {
+  id: Id;
+  weekday: number; // 0 = Monday … 6 = Sunday
+  startMinute: number; // local minute of day
+  durationMinutes: number;
+  categoryId: Id;
+  title: string | null;
+  notes: string | null;
+  tagIds: Id[];
+  presetId: Id | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -219,6 +254,12 @@ export interface Settings {
   globalShortcuts: Record<string, string>; // action -> accelerator, e.g. "Ctrl+Alt+Shift+P"; "" = off
   // Creative diary (v0.6)
   annotatePrompt: boolean; // ask "what did you get done?" when a focus round ends
+  // Presets & weekly template (v0.7)
+  sidebarCollapsed: string[]; // sidebar sections the user collapsed: "calendar" | "presets" | "activities"
+  templateOverlay: boolean; // show weekly-template suggestions in Today and Calendar
+  templateOnPast: boolean; // also show them on past days (for comparison)
+  presetView: "list" | "grid";
+  presetSort: "custom" | "name" | "duration" | "category";
 }
 
 export type SoundEvent = "focusStart" | "focusEnd" | "breakStart" | "breakEnd" | "cycleEnd";
@@ -288,6 +329,11 @@ export const DEFAULT_SETTINGS: Settings = {
   minimizeToTray: false,
   globalShortcuts: { toggle: "Ctrl+Alt+Shift+Space", mini: "Ctrl+Alt+Shift+M", clickThrough: "Ctrl+Alt+Shift+T" },
   annotatePrompt: true,
+  sidebarCollapsed: [],
+  templateOverlay: true,
+  templateOnPast: false,
+  presetView: "list",
+  presetSort: "custom",
 };
 
 /** A half-open interval [start, end) in epoch ms. */

@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 import type { DbDriver } from "../db/driver";
-import type { Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
+import type { ActivityPreset, Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag, WeekTemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
-export type View = "calendar" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
+export type View = "calendar" | "presets" | "template" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 
@@ -23,6 +23,13 @@ export interface SleepGap {
   sessionId: Id;
   from: number;
   to: number;
+}
+
+/** A preset being dragged from the library (pointer-driven, so it works inside the desktop webview). */
+export interface PresetDrag {
+  presetId: Id;
+  x: number;
+  y: number;
 }
 
 export interface Toast {
@@ -71,6 +78,15 @@ export interface AppState {
   globalShortcutErrors: string[]; // system-wide shortcuts another app already owns
   settingsAnchor: string | null; // section to scroll to when Settings opens
   journalRev: number; // bumped when diary notes change, so views reload them
+  // Presets & weekly template (v0.7)
+  presets: ActivityPreset[];
+  weekTemplate: WeekTemplateBlock[];
+  dismissed: Set<string>; // "YYYY-MM-DD|templateBlockId" for the loaded range
+  presetDrag: PresetDrag | null;
+  tplSelection: Id | null; // selected block in the Template editor
+  tplRenaming: Id | null;
+  focusOffer: { blockId: Id; focusPresetId: string } | null; // "use this preset's focus timer?"
+  presetEditing: Id | "new" | null; // preset open in the editor panel
 }
 
 const initial: AppState = {
@@ -113,6 +129,14 @@ const initial: AppState = {
   globalShortcutErrors: [],
   journalRev: 0,
   settingsAnchor: null,
+  presets: [],
+  weekTemplate: [],
+  dismissed: new Set(),
+  presetDrag: null,
+  tplSelection: null,
+  tplRenaming: null,
+  focusOffer: null,
+  presetEditing: null,
 };
 
 type Listener = () => void;
