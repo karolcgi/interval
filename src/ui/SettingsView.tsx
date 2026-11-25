@@ -187,6 +187,7 @@ export function SettingsView() {
           ["S  or Ctrl E", "Start / stop timer (selected block, or unscheduled)"],
           ["1 – 9", "Pick category (in picker) or recategorise selection"],
           ["C", "Confirm selected block as done"],
+          ["F2 / double-click", "Rename selected block"],
           ["X", "Split selected block"],
           ["Ctrl D", "Duplicate selected block"],
           ["Ctrl C / Ctrl V", "Copy block / paste onto focused day"],

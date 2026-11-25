@@ -207,6 +207,29 @@ export function select(selection: { kind: "block" | "session"; id: Id } | null) 
   store.set({ selection });
 }
 
+/** Begin editing an item's name inline on the timeline (F2, double-click, context menu). */
+export function startRename(target: { kind: "block" | "session"; id: Id }) {
+  store.set({ selection: target, renaming: target });
+}
+
+export function cancelRename() {
+  if (store.get().renaming) store.set({ renaming: null });
+}
+
+/** Commit an inline rename. An empty name clears it (the category name shows instead). */
+export async function renameItem(target: { kind: "block" | "session"; id: Id }, name: string) {
+  store.set({ renaming: null });
+  const title = name.trim() || null;
+  const s = store.get();
+  if (target.kind === "block") {
+    const b = s.blocks.find((x) => x.id === target.id);
+    if (b && b.title !== title) await updateBlock(b.id, { title }, "Rename block");
+  } else {
+    const x = s.sessions.find((y) => y.id === target.id);
+    if (x && x.title !== title) await updateSession(x.id, { title }, "Rename session");
+  }
+}
+
 // ------------------------------------------------------------ settings/meta
 
 export async function updateSettings(patch: Partial<Settings>) {

@@ -48,6 +48,7 @@ export interface AppState {
   paused: PausedTimer | null;
   runAccumulatedMs: number; // time from earlier segments of a paused/resumed run
   selection: Selection;
+  renaming: Selection; // item whose name is being edited inline on the timeline
   undoDepth: number;
   redoDepth: number;
   sleepGap: SleepGap | null;
@@ -78,6 +79,7 @@ const initial: AppState = {
   paused: null,
   runAccumulatedMs: 0,
   selection: null,
+  renaming: null,
   undoDepth: 0,
   redoDepth: 0,
   sleepGap: null,

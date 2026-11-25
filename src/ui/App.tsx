@@ -90,6 +90,7 @@ function useShortcuts() {
         return void (sel.kind === "block" ? A.deleteBlocks([sel.id]) : A.deleteSession(sel.id));
       }
       if (k === "escape") return A.select(null);
+      if (k === "f2" && sel) return e.preventDefault(), A.startRename(sel);
       if (k === "t") return A.goToday();
       if (k === "arrowleft" || k === "j") return A.stepDate(-1);
       if (k === "arrowright" || k === "k") return A.stepDate(1);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, Check, ChevronRight, Combine, Copy, CopyPlus, Play, RotateCcw, Scissors, Trash2, CalendarPlus } from "lucide-react";
+import { Ban, Check, Pencil, ChevronRight, Combine, Copy, CopyPlus, Play, RotateCcw, Scissors, Trash2, CalendarPlus } from "lucide-react";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import type { Id } from "../domain/types";
@@ -52,6 +52,7 @@ export function ItemContextMenu(p: Props) {
           <div className="menu-sep" />
         </>
       )}
+      <MenuItem icon={<Pencil size={13} />} label="Rename" hint="F2" onClick={run(() => A.startRename({ kind: p.kind, id: p.id }))} />
       <div className="menu-item has-sub" onMouseEnter={() => setSub(true)} onMouseLeave={() => setSub(false)} role="menuitem" aria-haspopup>
         <span className="menu-icon">
           <CatDot color={categories.find((c) => c.id === item.categoryId)?.color ?? "#888"} />

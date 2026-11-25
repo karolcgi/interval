@@ -117,6 +117,25 @@ describe("calendar actions with undo/redo", () => {
     expect((await repo.listAllSessions(db))[0].blockId).toBe(b.id);
   });
 
+  it("names blocks inline: rename, clear back to the category name, undo", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"), { title: "Houdini VEX" });
+    expect(store.get().blocks[0].title).toBe("Houdini VEX");
+    A.startRename({ kind: "block", id: b.id });
+    expect(store.get().renaming).toEqual({ kind: "block", id: b.id });
+    await A.renameItem({ kind: "block", id: b.id }, "  Pyro sim  ");
+    expect(store.get().renaming).toBeNull();
+    expect(store.get().blocks[0].title).toBe("Pyro sim");
+    await A.renameItem({ kind: "block", id: b.id }, "   ");
+    expect(store.get().blocks[0].title).toBeNull();
+    const depth = store.get().undoDepth;
+    await A.renameItem({ kind: "block", id: b.id }, ""); // unchanged: no history entry
+    expect(store.get().undoDepth).toBe(depth);
+    await A.undo();
+    expect(store.get().blocks[0].title).toBe("Pyro sim");
+    const [row] = await repo.listBlocks(store.get().db!, t(2026, 11, 25), t(2026, 11, 26));
+    expect(row.title).toBe("Pyro sim");
+  });
+
   it("changing a category updates history-derived stats immediately", async () => {
     const s = await A.createSession({ start: t(2026, 11, 25, 6), end: t(2026, 11, 25, 7) }, catId("Studying"));
     await A.updateSession(s.id, { categoryId: catId("Personal art") }, "Change category");

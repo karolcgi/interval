@@ -64,7 +64,7 @@ at creation time, so history remains interpretable after travel.
 |---|---|---|
 | `categories` | Purpose of time (Studying) | `parent_id` for subcategories, `sort_order`, `shortcut`, `is_break`, `archived_at` (never hard-deleted once used) |
 | `tags` | Subject of time (Houdini) | Unique by name, case-insensitive |
-| `blocks` | **Planned** time blocks | `status ∈ planned, in_progress, completed, skipped`, optional `title/notes/link`, `recurrence_id` (Phase 2) |
+| `blocks` | **Planned** time blocks | `status ∈ planned, in_progress, completed, skipped`, optional `title` (the block's name; UI falls back to the category name), `notes/link`, `recurrence_id`. **No colour column**: colour is always the category's. |
 | `block_tags` | Block ↔ tag | |
 | `sessions` | **Actual** recorded time | `end_at NULL` = running; `block_id` optional link to the plan; `mode ∈ manual, stopwatch, pomodoro, flowtime` |
 | `session_tags` | Session ↔ tag | |

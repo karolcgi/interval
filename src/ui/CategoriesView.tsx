@@ -116,7 +116,7 @@ function CategoryRow({ cat, all, onMove }: { cat: Category; all: Category[]; onM
   useEffect(() => setName(cat.name), [cat.name]);
   const save = (patch: Partial<Category>) => void A.saveCategory({ ...cat, ...patch }).catch(A.reportError);
   return (
-    <div className={`cat-grid ${cat.parentId ? "child" : ""}`}>
+    <div className={`cat-grid ${cat.parentId ? "child" : ""}`} data-name={cat.name}>
       <div className="color-cell">
         <button className="swatch" style={{ background: cat.color }} onClick={() => setShowColors((v) => !v)} aria-label="Change colour" />
         {showColors && (

@@ -133,8 +133,11 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
 
 ## Using it
 
-- **Plan**: drag on the left (Plan) lane. Press a category's number key, or type to filter and Enter.
-  Type `stu, Houdini VEX` to pick Studying and title it in one go. Double-click creates a default-length block.
+- **Plan**: drag on the left (Plan) lane. Type a name, press Enter, then press a category's number key
+  (or type to filter and Enter). No name? Just press Enter first; the block shows its category name.
+  Alt + number picks the category straight from the name field. Double-click empty space creates a default-length block.
+- **Rename**: double-click a block, press **F2**, or right-click › Rename. Enter saves, Esc cancels.
+- **Colour** always comes from the category. Change a category's colour and every block and session follows.
 - **Track**: hover a block and press ▶, or select it and press **S**. Stop with **S** or the floating timer.
   The original plan is preserved; the recorded session appears in the Actual lane.
 - **Confirm without a timer**: hover a past block and press ✓ (or **C**). This records the planned time as actual.
