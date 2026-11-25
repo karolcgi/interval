@@ -18,7 +18,9 @@ import { Toasts, SleepGapBanner } from "./Overlays";
 import { useTheme } from "./useTheme";
 import { FocusOverlay } from "./FocusOverlay";
 import { DailyRitual } from "./DailyRitual";
-import { useFocusEngine, useTray } from "./useFocusEngine";
+import { useFocusAlerts, useFocusEngine, useGlobalShortcuts, useShellEvents, useShellPrefs, useTimerBroadcast, currentSnapshot } from "./useFocusEngine";
+import { CompletionCard } from "./FloatWindows";
+import * as F from "../state/focus";
 
 export function App() {
   const ready = useApp((s) => s.ready);
@@ -31,7 +33,13 @@ export function App() {
   useShortcuts();
   useHeartbeat();
   useFocusEngine();
-  useTray();
+  useTimerBroadcast();
+  useShellEvents();
+  useShellPrefs();
+  useFocusAlerts();
+  useGlobalShortcuts();
+  // The in-workspace timer pill is for when the docked timer is out of sight.
+  const dockedTimer = useApp((s) => s.settings.sidebarOpen && s.settings.focusPanelOpen);
 
   if (fatal)
     return (
@@ -62,7 +70,7 @@ export function App() {
         {view === "reviews" && <ReviewsView />}
         {view === "categories" && <CategoriesView />}
         {view === "settings" && <SettingsView />}
-        <FloatingTimer />
+        {!dockedTimer && <FloatingTimer />}
       </main>
       {view === "calendar" ? <RightPanel overview={panelOpen} /> : <div />}
       <SleepGapBanner />
@@ -70,6 +78,7 @@ export function App() {
       <Toasts />
       <DailyRitual />
       <FocusOverlay />
+      <InAppCompletion />
     </div>
   );
 }
@@ -147,6 +156,14 @@ function runAction(id: string) {
       return void A.toggleTimer();
     case "focusMode":
       return store.set({ focusMode: !s.focusMode });
+    case "focusToggle":
+      return void F.toggle().catch(A.reportError);
+    case "focusSkip":
+      return void F.skip().catch(A.reportError);
+    case "focusExtend":
+      return void F.extend(5).catch(A.reportError);
+    case "miniTimer":
+      return void import("./FocusPanel").then((m) => m.toggleMini()).catch(A.reportError);
     case "sidebar":
       return void A.updateSettings({ sidebarOpen: !s.settings.sidebarOpen });
     case "panel":
@@ -186,4 +203,23 @@ function useHeartbeat() {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
+}
+
+/** Browser preview: the completion popup as a card in the corner (the desktop app uses its own window). */
+function InAppCompletion() {
+  const at = useApp((s) => s.completionPopup);
+  const rev = useApp((s) => s.focus?.rev ?? 0);
+  const openRev = useRef<number | null>(null);
+  useEffect(() => {
+    if (at === null) return void (openRev.current = null);
+    if (openRev.current === null) openRev.current = rev;
+    else if (rev !== openRev.current) store.set({ completionPopup: null });
+  }, [at, rev]);
+  if (at === null) return null;
+  const snap = currentSnapshot();
+  return (
+    <div className="in-app-completion">
+      <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} />
+    </div>
+  );
 }

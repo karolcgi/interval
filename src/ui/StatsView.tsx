@@ -9,6 +9,7 @@ import { DAY, dayKey, previousRange, RANGE_LABELS, resolveRange, type RangePrese
 import { fmt, fmtDuration, fmtHours, fmtTime } from "../domain/format";
 import { catVars, CatDot, Segmented, useElementWidth } from "./bits";
 import { Cumulative, Heatmap, PlanVsActual } from "./StatsCharts";
+import { FocusHistory } from "./FocusHistory";
 
 const PRESETS: RangePreset[] = ["today", "yesterday", "this_week", "last_week", "this_month", "last_month", "this_quarter", "this_year", "last_year", "all_time", "custom"];
 
@@ -178,6 +179,8 @@ export function StatsView() {
               {data && <Cumulative stats={stats} sessions={data.sessions} range={range} filter={filter} groupBy={groupBy} catById={catById} tagById={tagById} />}
             </div>
           </div>
+
+          {data && <FocusHistory sessions={data.sessions} range={range} defaultBucket={days <= 35 ? "day" : days <= 140 ? "week" : days <= 800 ? "month" : "year"} />}
 
           {drill && data && (
             <DrillList

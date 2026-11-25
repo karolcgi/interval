@@ -1,0 +1,5 @@
+The sounds in this folder were synthesised from scratch for Interval by scripts/make-sounds.mjs
+(additive mallet and bell tones; no third-party samples). They are original works distributed with
+Interval under the same terms as the rest of the project, and may be regenerated at any time with:
+
+    node scripts/make-sounds.mjs

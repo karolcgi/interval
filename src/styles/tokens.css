@@ -62,6 +62,8 @@
   --now: #e79b8b;
   --danger: #e58a7b;
   --ok: #8bbca0;
+  --focus: #e79b8b; /* focus phases: the salmon accent */
+  --break: #93b59d; /* break phases: muted green */
   --shadow: 0 8px 28px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.04);
   --block-fill: 19%;
   --block-fill-planned: 7%;
@@ -90,6 +92,8 @@
   --now: #d4604a;
   --danger: #c4513f;
   --ok: #4f8d6a;
+  --focus: #cf6a55;
+  --break: #4f8d6a;
   --shadow: 0 8px 28px rgb(30 25 15 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.06);
   --block-fill: 17%;
   --block-fill-planned: 6%;

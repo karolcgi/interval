@@ -355,91 +355,277 @@ describe("timer", () => {
   });
 });
 
-describe("Pomodoro and Flowtime", () => {
-  const withClock = async (fn: (db: SqlJsDriver) => Promise<void>) => {
+describe("focus timer engine", () => {
+  const withClock = async (fn: (db: SqlJsDriver) => Promise<void>, settings: Partial<ReturnType<typeof store.get>["settings"]> = {}) => {
     vi.useFakeTimers();
     try {
       const db = await testDb();
       vi.setSystemTime(t(2026, 11, 25, 9));
       await boot(db);
-      store.set({ settings: { ...store.get().settings, sounds: false, notifications: false } });
+      await A.updateSettings({ sounds: false, notifications: false, ...settings });
       await fn(db);
     } finally {
       vi.useRealTimers();
     }
   };
+  /** The app is alive: tick every 20 s up to `to` (the shell nudges at least this often). */
+  const advance = async (to: number) => {
+    for (let now = Date.now() + 20_000; now < to; now += 20_000) {
+      vi.setSystemTime(now);
+      await F.tick(now);
+    }
+    vi.setSystemTime(to);
+    await F.tick(to);
+  };
   const all = async (db: SqlJsDriver) => (await repo.listAllSessions(db)).sort((a, b) => a.startAt - b.startAt);
+  const runs = async (db: SqlJsDriver) => repo.listAllFocusRuns(db);
+  const P25 = { focus: 25, brk: 5, long: 15, every: 4 };
+  const span = (x: { startAt: number; endAt: number | null }) => [x.startAt, x.endAt];
 
-  it("pomodoro: 25 min focus, 5 min break recorded as a break, then waits for the next round", () =>
+  it("pomodoro: focus and break recorded exactly at their deadlines, then waits for the next round", () =>
     withClock(async (db) => {
-      await F.startPomodoro({ categoryId: catId("Studying"), title: "VEX" }, { focus: 25, brk: 5, long: 15, every: 4 });
+      await F.startPomodoro({ categoryId: catId("Studying"), title: "VEX" }, P25);
       expect(store.get().running?.mode).toBe("pomodoro");
-      vi.setSystemTime(t(2026, 11, 25, 9, 25) + 30_000);
-      await F.tickFocus();
-      expect(store.get().focus?.phase).toBe("break");
+      await advance(t(2026, 11, 25, 9, 25) + 7_000);
+      expect(store.get().focus).toMatchObject({ phase: "break", breakKind: "short", round: 1 });
       expect(store.get().running?.categoryId).toBe(catId("Breaks"));
-      vi.setSystemTime(t(2026, 11, 25, 9, 31));
-      await F.tickFocus();
+      await advance(t(2026, 11, 25, 9, 31));
       expect(store.get().focus?.phase).toBe("ready");
       expect(store.get().running).toBeNull();
       const [focus, brk] = await all(db);
-      expect([focus.startAt, focus.endAt]).toEqual([t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)]); // exact, not tick time
-      expect([brk.startAt, brk.endAt]).toEqual([t(2026, 11, 25, 9, 25), t(2026, 11, 25, 9, 30)]);
+      expect(span(focus)).toEqual([t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)]); // exact, not tick time
+      expect(span(brk)).toEqual([t(2026, 11, 25, 9, 25), t(2026, 11, 25, 9, 30)]);
       expect(focus.title).toBe("VEX");
+      const r = await runs(db);
+      expect(r.map((x) => [x.phase, x.outcome, x.activeMs / MINUTE])).toEqual([
+        ["focus", "completed", 25],
+        ["short_break", "completed", 5],
+      ]);
       await F.nextRound();
       expect(store.get().running).toMatchObject({ categoryId: catId("Studying"), title: "VEX", mode: "pomodoro" });
       expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
     }));
 
-  it("pomodoro catches up after sleep and gives the long break after every Nth round", () =>
+  it("sleep during focus pauses at the last moment Interval was alive; nothing is recorded while asleep", () =>
     withClock(async (db) => {
-      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 1 });
-      vi.setSystemTime(t(2026, 11, 25, 11)); // slept through focus end AND break end
-      await F.tickFocus();
-      expect(store.get().focus?.phase).toBe("ready");
-      const [focus, brk] = await all(db);
-      expect(focus.endAt).toBe(t(2026, 11, 25, 9, 25));
-      expect(brk.endAt! - brk.startAt).toBe(15 * MINUTE);
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 10));
+      vi.setSystemTime(t(2026, 11, 25, 11)); // laptop lid closed for almost two hours
+      await F.tick(t(2026, 11, 25, 11));
+      expect(store.get().focus).toMatchObject({ phase: "focus", segStart: null, activeMs: 10 * MINUTE, pausedRemaining: 15 * MINUTE });
+      expect(store.get().running).toBeNull();
+      expect((await all(db)).map(span)).toEqual([[t(2026, 11, 25, 9), t(2026, 11, 25, 9, 10)]]);
+      await F.resume();
+      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 11, 15));
+      await advance(t(2026, 11, 25, 11, 16));
+      expect(store.get().focus?.phase).toBe("break");
+      const focusRun = (await runs(db)).find((x) => x.phase === "focus")!;
+      expect(focusRun).toMatchObject({ outcome: "completed", activeMs: 25 * MINUTE });
     }));
 
-  it("pause keeps the remaining time of the round", () =>
-    withClock(async () => {
-      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 4 });
-      vi.setSystemTime(t(2026, 11, 25, 9, 10));
-      await A.pauseTimer();
+  it("a short restart (under 5 minutes) catches up exactly; a long one pauses", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 24));
+      // app closed at 9:24 and reopened at 9:27: the round ended at 9:25 and the break began then
+      const saved = store.get().db!;
+      store.reset();
+      store.set({ db: saved, ready: true, date: startOfDay(Date.now()) });
+      await A.reloadMeta();
+      await A.refresh();
+      await F.initEngine();
+      vi.setSystemTime(t(2026, 11, 25, 9, 27));
+      await F.tick(t(2026, 11, 25, 9, 27));
+      expect(store.get().focus?.phase).toBe("break");
+      expect((await all(db)).map(span)).toEqual([
+        [t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)],
+        [t(2026, 11, 25, 9, 25), null],
+      ]);
+    }));
+
+  it("long break after every Nth round marks the cycle; after the long break the cycle is done", () =>
+    withClock(
+      async (db) => {
+        await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 2 });
+        await advance(t(2026, 11, 25, 9, 30)); // focus 1 + break
+        expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 }); // auto-started
+        await advance(t(2026, 11, 25, 9, 55)); // focus 2 ends -> long break
+        expect(store.get().focus).toMatchObject({ phase: "break", breakKind: "long", round: 2 });
+        expect(store.get().focus?.completed?.cycleDone).toBe(true);
+        await advance(t(2026, 11, 25, 10, 11)); // long break over: auto-start begins a new cycle
+        expect(store.get().focus).toMatchObject({ phase: "focus", round: 0 });
+        const r = await runs(db);
+        expect(r.filter((x) => x.endsCycle)).toHaveLength(1);
+        expect(r.map((x) => x.phase)).toEqual(["focus", "short_break", "focus", "long_break", "focus"]);
+        expect(store.get().focus?.cycleId).not.toBe(r[0].cycleId);
+        // without auto-start the cycle rests in "done" until you start a new one
+        await A.updateSettings({ focusAutoFocus: false });
+        await advance(t(2026, 11, 25, 10, 36));
+        await advance(t(2026, 11, 25, 10, 41));
+        await advance(t(2026, 11, 25, 10, 41, ) + 26 * MINUTE);
+        await F.nextRound();
+        await advance(t(2026, 11, 25, 11, 32) + 16 * MINUTE);
+        expect(store.get().focus?.phase).toBe("done");
+      },
+      { focusAutoFocus: true },
+    ));
+
+  it("pause excludes paused time; extend works running and paused", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 10));
+      await F.pause();
       expect(store.get().focus?.pausedRemaining).toBe(15 * MINUTE);
       vi.setSystemTime(t(2026, 11, 25, 10));
-      await F.tickFocus(); // paused: nothing happens
+      await F.tick(); // paused: nothing happens, however long
       expect(store.get().focus?.phase).toBe("focus");
-      await A.resumeTimer();
-      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 10, 15));
-      expect(store.get().running?.mode).toBe("pomodoro");
+      await F.extend(5); // paused + 5
+      expect(store.get().focus?.pausedRemaining).toBe(20 * MINUTE);
+      await F.resume();
+      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 10, 20));
+      await F.extend(10);
+      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 10, 30));
+      await advance(t(2026, 11, 25, 10, 31));
+      const [a, b] = await all(db);
+      expect(span(a)).toEqual([t(2026, 11, 25, 9), t(2026, 11, 25, 9, 10)]);
+      expect(span(b)).toEqual([t(2026, 11, 25, 10), t(2026, 11, 25, 10, 30)]);
+      expect((await runs(db))[0]).toMatchObject({ outcome: "completed", activeMs: 40 * MINUTE, plannedMs: 40 * MINUTE });
     }));
 
-  it("flowtime: stop suggests a proportional break; accepting records it and then ends", () =>
+  it("skip: focus -> break, break -> next round; a paused break resumes as a break", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 12));
+      await F.skip();
+      expect(store.get().focus).toMatchObject({ phase: "break", round: 1 });
+      await advance(t(2026, 11, 25, 9, 14));
+      await F.pause();
+      expect(store.get().focus?.segStart).toBeNull();
+      await advance(t(2026, 11, 25, 9, 20));
+      await F.resume();
+      expect(store.get().running?.categoryId).toBe(catId("Breaks"));
+      await F.skip();
+      expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
+      expect((await runs(db)).map((x) => x.outcome)).toEqual(["skipped", "skipped", null]);
+    }));
+
+  it("breaks can be left unrecorded; break time still counts in focus history", () =>
+    withClock(
+      async (db) => {
+        await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+        await advance(t(2026, 11, 25, 9, 27));
+        expect(store.get().focus?.phase).toBe("break");
+        expect(store.get().running).toBeNull();
+        await F.pause();
+        await F.resume();
+        await advance(t(2026, 11, 25, 9, 31));
+        expect((await all(db)).map((x) => x.categoryId)).toEqual([catId("Studying")]);
+        expect((await runs(db)).find((x) => x.phase === "short_break")?.activeMs).toBe(5 * MINUTE);
+      },
+      { focusRecordBreaks: false },
+    ));
+
+  it("'+5 min focus' after an auto-started break withdraws the break and continues seamlessly", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 25, ) + 40_000);
+      expect(store.get().focus?.phase).toBe("break");
+      await F.extendCompleted(5);
+      expect(store.get().focus).toMatchObject({ phase: "focus", round: 0, phaseEnd: t(2026, 11, 25, 9, 30) });
+      await advance(t(2026, 11, 25, 9, 31));
+      expect((await all(db)).map((x) => [x.categoryId === catId("Breaks") ? "break" : "focus", x.startAt, x.endAt])).toEqual([
+        ["focus", t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)],
+        ["focus", t(2026, 11, 25, 9, 25), t(2026, 11, 25, 9, 30)],
+        ["break", t(2026, 11, 25, 9, 30), null],
+      ]);
+      const r = await runs(db);
+      expect(r.map((x) => [x.phase, x.activeMs / MINUTE])).toEqual([
+        ["focus", 30],
+        ["short_break", 0],
+      ]);
+    }));
+
+  it("finishing right after a break started by itself does not record that break", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 25) + 20_000);
+      await F.finish();
+      expect(store.get().focus).toBeNull();
+      expect((await all(db)).map((x) => x.categoryId)).toEqual([catId("Studying")]);
+      expect((await runs(db)).map((x) => x.phase)).toEqual(["focus"]);
+    }));
+
+  it("duplicate ticks and stale or repeated commands never duplicate records", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, P25);
+      await advance(t(2026, 11, 25, 9, 24));
+      vi.setSystemTime(t(2026, 11, 25, 9, 25, ) + 5_000);
+      await Promise.all([F.tick(), F.tick(), F.tick(), F.runCommand("skip", store.get().focus!.rev - 1)]);
+      expect(store.get().focus?.phase).toBe("break");
+      expect(await all(db)).toHaveLength(2);
+      const rev = store.get().focus!.rev;
+      // a double click on "skip break" in the popup: the second one carries a stale revision
+      await Promise.all([F.runCommand("skip", rev), F.runCommand("skip", rev)]);
+      expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
+      expect(await all(db)).toHaveLength(3);
+      expect(await runs(db)).toHaveLength(3);
+    }));
+
+  it("from a calendar block: inherits category and tags, several rounds on one block, the plan is untouched", () =>
+    withClock(
+      async (db) => {
+        const houdini = await A.ensureTag("Houdini");
+        const plan = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Personal art"), { title: "Lighting study", tagIds: [houdini.id] });
+        await F.startPomodoro({ blockId: plan.id }, P25);
+        expect(store.get().running).toMatchObject({ blockId: plan.id, categoryId: catId("Personal art"), tagIds: [houdini.id], title: "Lighting study" });
+        expect((await repo.getBlock(db, plan.id))?.status).toBe("in_progress");
+        await advance(t(2026, 11, 25, 10, 30)); // two rounds, past the block's end
+        await F.stop();
+        const focusSessions = (await all(db)).filter((x) => x.categoryId !== catId("Breaks"));
+        expect(focusSessions.length).toBeGreaterThanOrEqual(2);
+        expect(focusSessions.every((x) => x.blockId === plan.id)).toBe(true);
+        const after = (await repo.getBlock(db, plan.id))!;
+        expect([after.startAt, after.endAt, after.status]).toEqual([plan.startAt, plan.endAt, "completed"]);
+        // recorded time feeds the normal statistics and budgets
+        const st = computeStats({ sessions: await all(db), blocks: [after], categories: store.get().categories, range: { start: t(2026, 11, 25), end: t(2026, 11, 26) }, now: Date.now() });
+        expect(st.byCategory.find((c) => c.categoryId === catId("Personal art"))!.recordedMs).toBe(st.recordedMs);
+      },
+      { focusAutoFocus: true },
+    ));
+
+  it("flowtime: stop suggests a proportional break; when it ends, the next step is offered", () =>
     withClock(async (db) => {
       await F.startFlowtime({ categoryId: catId("Personal art") });
-      vi.setSystemTime(t(2026, 11, 25, 10, 2));
+      await advance(t(2026, 11, 25, 10, 2));
       await A.stopTimer();
       expect(store.get().focus).toMatchObject({ phase: "suggest", suggestedBreakMin: 10 });
       await F.startSuggestedBreak();
       expect(store.get().running?.categoryId).toBe(catId("Breaks"));
-      vi.setSystemTime(t(2026, 11, 25, 10, 13));
-      await F.tickFocus();
-      expect(store.get().focus).toBeNull();
+      await advance(t(2026, 11, 25, 10, 13));
+      expect(store.get().focus?.phase).toBe("ready");
       expect(store.get().running).toBeNull();
       const [work, brk] = await all(db);
       expect(work.endAt! - work.startAt).toBe(62 * MINUTE);
       expect(work.mode).toBe("flowtime");
       expect(brk.endAt! - brk.startAt).toBe(10 * MINUTE);
+      await F.finish();
+      expect(store.get().focus).toBeNull();
     }));
 
-  it("starting an ordinary timer ends a focus cycle", () =>
-    withClock(async () => {
+  it("the stopwatch runs through the same engine; starting another timer ends the cycle", () =>
+    withClock(async (db) => {
       await F.startPomodoro({ categoryId: catId("Studying") });
+      await advance(t(2026, 11, 25, 9, 5));
       await A.startTimer({ categoryId: catId("Freelance work") });
-      expect(store.get().focus).toBeNull();
+      expect(store.get().focus).toMatchObject({ kind: "stopwatch", phase: "focus" });
       expect(store.get().running?.mode).toBe("stopwatch");
+      await advance(t(2026, 11, 25, 9, 50));
+      await A.stopTimer();
+      expect(store.get().focus).toBeNull();
+      expect((await runs(db)).map((x) => [x.kind, x.outcome])).toEqual([
+        ["pomodoro", "stopped"],
+        ["stopwatch", "completed"],
+      ]);
     }));
 });
 

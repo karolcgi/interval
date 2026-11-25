@@ -160,6 +160,35 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX idx_achievements_day ON achievements(achieved_on)`,
     ],
   },
+  {
+    version: 4,
+    name: "focus timer history",
+    up: [
+      // One row per focus or break phase run by the focus timer. Recorded time itself stays in
+      // `sessions` (that is what statistics, budgets and progress read); this table adds what sessions
+      // cannot express: whether a round was completed, skipped or stopped, the planned length, cycles,
+      // and break time even when breaks are not recorded as sessions.
+      `CREATE TABLE focus_runs (
+        id TEXT PRIMARY KEY,
+        cycle_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('pomodoro','flowtime','stopwatch')),
+        phase TEXT NOT NULL CHECK (phase IN ('focus','short_break','long_break')),
+        round INTEGER NOT NULL,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        planned_ms INTEGER,
+        active_ms INTEGER NOT NULL DEFAULT 0,
+        outcome TEXT CHECK (outcome IN ('completed','skipped','stopped')),
+        ends_cycle INTEGER NOT NULL DEFAULT 0,
+        category_id TEXT,
+        block_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (ended_at IS NULL OR ended_at >= started_at)
+      )`,
+      `CREATE INDEX idx_focus_runs_start ON focus_runs(started_at)`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

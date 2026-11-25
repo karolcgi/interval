@@ -231,6 +231,30 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - **Right area**: `RightPanel` renders `[properties][day overview]`; the shell's third grid column is `auto`, so the
   timeline gives up room when a block is selected instead of being overlaid.
 
+## Focus timer design notes (v0.4)
+
+- **One engine, many views.** `src/state/focus.ts` is the only timer. It runs in the main window; the floating mini
+  timer (`?window=mini`), the completion popup (`?window=popup`) and the tray render a `TimerSnapshot`
+  (`domain/focus.ts › snapshotOf`) and send commands back (`timerBus.ts`: Tauri events, or a BroadcastChannel in the
+  browser). Commands carry the snapshot's `rev`; a stale command (two windows clicking at once) is dropped.
+- **Time is timestamps, not ticks.** A phase stores `segStart`, `activeMs` and `phaseMs`; the deadline is derived. Pausing
+  closes the segment, so paused time is never recorded. `tick()` catches up on any number of missed transitions at their
+  exact deadlines (deterministic, no duplicates). If the app was asleep or closed longer than 5 min (heartbeat in
+  `timer.heartbeat`), a focus phase is paused at the last moment we were alive, and a break ends without auto-starting focus.
+- **Atomic transitions.** Each transition is one DB batch: session rows, block status, the `focus_runs` row and the
+  persisted timer state. Engine operations are serialized (`serial()`), so tray, shortcut, popup and tick can't interleave.
+- **Recording.** Focus time is a normal session (mode `pomodoro`/`flowtime`/`stopwatch`), so the overlap policy, stats,
+  budgets and progression apply unchanged. Breaks become sessions in the break category only when "Record breaks" is on;
+  `focus_runs` (migration v4) keeps one row per phase either way for focus history (completed/skipped/stopped, cycles).
+  `extendCompleted` (popup "+5 min focus") withdraws an auto-started break and continues the same run and session.
+- **Shell (`src-tauri/src/shell.rs`).** Caches the last snapshot, emits `timer-wake` at the next deadline / every 20 s /
+  after system sleep (WebView timers are throttled when minimized), updates the tray tooltip each second, owns the
+  mini/popup windows (created hidden, shown with `SW_SHOWNOACTIVATE` so they never take focus), saves the mini position,
+  and on Windows checks whether the foreground window covers its monitor (fullscreen) to hide the mini timer and hold the popup.
+  All windows share one WebView2 environment, so every window must use the same `additionalBrowserArgs`.
+- **Sounds** are synthesized by `scripts/make-sounds.mjs` (original, see `public/sounds/LICENSE.txt`). Custom files are
+  copied into `<data dir>/sounds` by `import_sound` and read back only from there.
+
 ## Roadmap notes
 
 Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.

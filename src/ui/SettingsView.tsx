@@ -8,6 +8,7 @@ import { bootPrefs, isTauri, openTextFile, pickDirectory, revealDataFolder, save
 import { dayKey } from "../domain/time";
 import { Segmented } from "./bits";
 import { switchDemo } from "../bootstrap";
+import { FocusTimerSettings } from "./FocusSettings";
 
 const ACCENTS = ["#d5d3ca", "#8298d7", "#8bbca0", "#ba9ad0", "#77b3bf", "#d49a72", "#e79b8b"];
 
@@ -30,7 +31,6 @@ export function SettingsView() {
   const s = useApp((x) => x.settings);
   const storage = useApp((x) => x.storageLabel);
   const demo = useApp((x) => x.demo);
-  const categories = useApp((x) => x.categories);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<typeof s>) => void A.updateSettings(patch).catch(A.reportError);
 
@@ -126,44 +126,7 @@ export function SettingsView() {
         </Row>
       </div>
 
-      <h2 className="section-title">Focus</h2>
-      <div className="settings-block">
-        <Row label="Pomodoro" hint="Your default preset. 25/5, 50/10 and 90/15 are always offered next to Start.">
-          <NumField label="Focus minutes" value={s.pomodoroFocus} min={5} max={180} onChange={(pomodoroFocus) => set({ pomodoroFocus })} suffix="focus" />
-          <NumField label="Break minutes" value={s.pomodoroBreak} min={1} max={60} onChange={(pomodoroBreak) => set({ pomodoroBreak })} suffix="break" />
-        </Row>
-        <Row label="Long break" hint="After every Nth focus round">
-          <NumField label="Long break minutes" value={s.pomodoroLongBreak} min={1} max={90} onChange={(pomodoroLongBreak) => set({ pomodoroLongBreak })} suffix="min" />
-          <span className="muted">every</span>
-          <NumField label="Rounds before a long break" value={s.pomodoroLongEvery} min={1} max={12} onChange={(pomodoroLongEvery) => set({ pomodoroLongEvery })} suffix="rounds" />
-        </Row>
-        <Row label="Breaks are recorded as" hint="Pomodoro and Flowtime breaks are logged to this category and reported separately">
-          <select className="select sm" value={s.breakCategoryId ?? ""} onChange={(e) => set({ breakCategoryId: e.target.value || null })} aria-label="Break category">
-            <option value="">First break category</option>
-            {categories
-              .filter((c) => !c.archivedAt)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-          </select>
-        </Row>
-        <Row label="Break reminder" hint="Stopwatch only. One gentle nudge after a long unbroken stretch. 0 turns it off.">
-          <NumField label="Break reminder minutes" value={s.breakReminderMinutes} min={0} max={480} onChange={(breakReminderMinutes) => set({ breakReminderMinutes })} suffix="min" />
-        </Row>
-        <Row label="Notifications" hint="Windows notifications when a round or break ends while Interval is in the background">
-          <input type="checkbox" checked={s.notifications} onChange={(e) => set({ notifications: e.target.checked })} aria-label="Notifications" />
-        </Row>
-        <Row label="Sounds" hint="A soft chime at the end of a round or break">
-          <input type="checkbox" checked={s.sounds} onChange={(e) => set({ sounds: e.target.checked })} aria-label="Sounds" />
-        </Row>
-        {isTauri() && (
-          <Row label="Close to tray" hint="Closing the window keeps Interval in the system tray, where the timer can be started, paused and stopped">
-            <input type="checkbox" checked={s.closeToTray} onChange={(e) => set({ closeToTray: e.target.checked })} aria-label="Close to tray" />
-          </Row>
-        )}
-      </div>
+      <FocusTimerSettings />
 
       <h2 className="section-title">Daily ritual</h2>
       <div className="settings-block">
@@ -319,7 +282,7 @@ function confirmInline(msg: string): boolean {
   return window.confirm(msg);
 }
 
-function NumField(p: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; suffix?: string }) {
+export function NumField(p: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; suffix?: string }) {
   const [v, setV] = useState(String(p.value));
   const commit = () => {
     const n = Math.round(Number(v));
@@ -334,7 +297,7 @@ function NumField(p: { label: string; value: number; min: number; max: number; o
   );
 }
 
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="set-row">
       <div className="set-label">

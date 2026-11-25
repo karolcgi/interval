@@ -38,7 +38,7 @@ export function FocusOverlay() {
   const elapsed = running ? acc + (now - running.startAt) : paused?.accumulatedMs ?? 0;
   const idle = !running && !paused;
   const isBreak = focus?.phase === "break";
-  const pct = focus && focus.phaseEnd !== null && left !== null ? 1 - left / Math.max(1, focus.phaseEnd - focus.phaseStart) : null;
+  const pct = focus && focus.phaseMs && left !== null ? 1 - left / focus.phaseMs : null;
 
   return (
     <div className="focus-overlay" style={catVars(cat?.color ?? "#888")} role="dialog" aria-label="Focus mode">
@@ -55,7 +55,7 @@ export function FocusOverlay() {
           </div>
         )}
         <div className="focus-controls">
-          {focus?.phase === "ready" ? (
+          {focus?.phase === "ready" || focus?.phase === "done" ? (
             <button className="btn btn-cat" onClick={() => run(F.nextRound())}>
               <Play size={12} fill="currentColor" /> Start round {focus.round + 1}
             </button>

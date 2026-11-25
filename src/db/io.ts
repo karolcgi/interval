@@ -4,7 +4,7 @@
 import type { DbDriver, Statement } from "./driver";
 import * as repo from "./repo";
 import { LATEST_VERSION } from "./migrations";
-import type { Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Session, Tag } from "../domain/types";
+import type { Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, FocusRun, Session, Tag } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { parseCsv, toCsv } from "../domain/csv";
 import { isoLocal } from "../domain/format";
@@ -25,6 +25,7 @@ export interface ExportBundle {
   templates?: DayTemplate[]; // since 0.2
   budgets?: Budget[]; // since 0.2
   achievements?: PersonalAchievement[]; // since 0.3
+  focusRuns?: FocusRun[]; // since 0.4
   settings: Record<string, unknown>;
 }
 
@@ -53,6 +54,7 @@ export async function exportJson(db: DbDriver): Promise<ExportBundle> {
     templates: await repo.listTemplates(db),
     budgets: await repo.listBudgets(db),
     achievements: await repo.listAchievements(db),
+    focusRuns: await repo.listAllFocusRuns(db),
     settings,
   };
 }
@@ -87,6 +89,7 @@ export async function importJson(db: DbDriver, data: unknown): Promise<{ blocks:
   for (const t of b.templates ?? []) stmts.push(...repo.upsertTemplateStmts({ ...t, blocks: t.blocks.map((x) => ({ ...x, tagIds: mapTags(x.tagIds) })) }));
   for (const bu of b.budgets ?? []) stmts.push(repo.upsertBudgetStmt({ ...bu, targetId: bu.targetType === "tag" ? (tagMap.get(bu.targetId) ?? bu.targetId) : bu.targetId }));
   for (const a of b.achievements ?? []) stmts.push(repo.upsertAchievementStmt({ ...a, targetId: a.targetType === "tag" && a.targetId ? (tagMap.get(a.targetId) ?? a.targetId) : a.targetId }));
+  for (const f of b.focusRuns ?? []) stmts.push(repo.upsertFocusRunStmt(f));
   await db.batch(stmts);
   return { blocks: b.blocks?.length ?? 0, sessions: b.sessions?.length ?? 0 };
 }

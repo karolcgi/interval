@@ -1,14 +1,14 @@
 // Application actions. Every calendar mutation goes through `commit`, which writes the new
 // row states atomically and records the previous states for undo/redo.
 
-import { store, type CalendarMode, type PausedTimer, type View } from "./store";
+import { store, type AppState, type CalendarMode, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
-import type { FocusState } from "../domain/focus";
+import { normalizeFocus } from "../domain/focus";
 import * as repo from "../db/repo";
 import type { Block, Budget, PersonalAchievement, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { ensureOccurrences } from "./planning";
-import { focusUserStop, nextRound as focusNextRound, setFocusState } from "./focus";
+import * as Focus from "./focus";
 import { findMergeCandidate, mergedInterval, splitInterval, splitPoint } from "../domain/calendar";
 
 // ------------------------------------------------------------------ helpers
@@ -171,14 +171,14 @@ export async function reloadMeta() {
     repo.listCategories(d),
     repo.listTags(d),
     repo.loadSettings(d),
-    repo.getSetting<PausedTimer>(d, "timer.paused"),
+    repo.getSetting<AppState["paused"]>(d, "timer.paused"),
     repo.getSetting<number>(d, "timer.accumulated"),
     repo.listRules(d),
     repo.listTemplates(d),
     repo.listBudgets(d),
     repo.listAchievements(d),
   ]);
-  const focus = await repo.getSetting<FocusState>(d, "timer.focus");
+  const focus = normalizeFocus(await repo.getSetting<unknown>(d, "timer.focus"));
   store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, achievements, focus });
 }
 
@@ -545,103 +545,56 @@ export async function deleteSession(id: Id) {
 }
 
 // -------------------------------------------------------------------- timer
+//
+// The timer itself lives in state/focus.ts (one engine for Stopwatch, Pomodoro and Flowtime). These
+// are the entry points the rest of the UI has always used.
 
 const HEARTBEAT_KEY = "timer.heartbeat";
 
-export async function startTimer(
-  opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode; accumulatedMs?: number; startAt?: number; keepFocus?: boolean } = {},
-) {
-  const s = store.get();
-  const now = opts.startAt ?? Date.now();
-  // Starting any timer by hand ends a Pomodoro/Flowtime cycle; the focus engine passes keepFocus.
-  if (!opts.keepFocus && s.focus) await setFocusState(null);
-  const block = opts.blockId ? findBlock(opts.blockId) ?? (await repo.getBlock(db(), opts.blockId)) : null;
-  const categoryId = opts.categoryId ?? block?.categoryId ?? s.categories.find((c) => !c.archivedAt && !c.isBreak)?.id;
-  if (!categoryId) return toast("Create a category first");
-  const changes: Change[] = [];
-  if (s.running) changes.push(...(await stopChanges(now)));
-  const session: Session = {
-    id: repo.newId(),
-    startAt: now,
-    endAt: null,
-    tz: currentTimeZone(),
-    categoryId,
-    blockId: block?.id ?? null,
-    title: opts.title ?? block?.title ?? null,
-    notes: null,
-    mode: opts.mode ?? "stopwatch",
-    tagIds: opts.tagIds ?? block?.tagIds ?? [],
-    createdAt: now,
-    updatedAt: now,
-  };
-  changes.push({ type: "session", before: null, after: session });
-  if (block && block.status !== "in_progress") changes.push({ type: "block", before: block, after: { ...block, status: "in_progress", updatedAt: now } });
-  await db().batch([repo.setSettingStmt("timer.paused", null), repo.setSettingStmt("timer.accumulated", opts.accumulatedMs ?? 0), repo.setSettingStmt(HEARTBEAT_KEY, now)]);
-  store.set({ paused: null, runAccumulatedMs: opts.accumulatedMs ?? 0 });
-  await commit("Start session", changes, { undoable: false });
-}
-
-async function stopChanges(at: number): Promise<Change[]> {
-  const running = store.get().running ?? (await repo.getRunningSession(db()));
-  if (!running) return [];
-  const changes: Change[] = [{ type: "session", before: running, after: { ...running, endAt: Math.max(at, running.startAt), updatedAt: Date.now() } }];
-  if (running.blockId) {
-    const b = findBlock(running.blockId) ?? (await repo.getBlock(db(), running.blockId));
-    if (b && b.status !== "completed") changes.push({ type: "block", before: b, after: { ...b, status: "completed", updatedAt: Date.now() } });
-  }
-  return changes;
-}
-
-export async function stopTimer(at = Date.now(), opts: { internal?: boolean } = {}) {
-  // A user stop during Pomodoro/Flowtime goes through the focus engine (suggested breaks etc.).
-  if (!opts.internal && store.get().focus) return focusUserStop(at);
-  const s = store.get();
-  if (!s.running && s.paused) {
-    // Stopping a paused run just clears the pause; the time was already recorded.
-    await db().batch([repo.setSettingStmt("timer.paused", null), repo.setSettingStmt("timer.accumulated", 0)]);
-    store.set({ paused: null, runAccumulatedMs: 0 });
-    return;
-  }
-  const changes = await stopChanges(at);
-  if (!changes.length) return;
-  const duration = at - (s.running?.startAt ?? at) + s.runAccumulatedMs;
-  await db().batch([repo.setSettingStmt("timer.accumulated", 0)]);
-  store.set({ runAccumulatedMs: 0 });
-  await commit("Stop session", changes, { undoable: false });
-  toast(`Recorded ${Math.round(duration / 60_000)} min`);
-}
-
-/** Pause = close the current session segment and remember what to resume. */
-export async function pauseTimer() {
-  const s = store.get();
-  const r = s.running;
-  if (!r) return;
-  const now = Date.now();
-  const paused: PausedTimer = { categoryId: r.categoryId, blockId: r.blockId, tagIds: r.tagIds, title: r.title, pausedAt: now, accumulatedMs: s.runAccumulatedMs + (now - r.startAt) };
-  const f = s.focus;
-  const focus = f && f.phaseEnd !== null ? { ...f, pausedRemaining: Math.max(0, f.phaseEnd - now) } : f;
-  await db().batch([...repo.upsertSessionStmts({ ...r, endAt: now, updatedAt: now }), repo.setSettingStmt("timer.paused", paused), repo.setSettingStmt("timer.focus", focus)]);
-  store.set({ paused, focus });
+/** Applies one timer transition atomically: the session/block changes plus `extra` statements. */
+export async function commitTimer(changes: Change[], extra: Statement[], patch: Partial<AppState>) {
+  if (changes.length === 0 && extra.length === 0) return;
+  await db().batch([...extra, ...forward(changes)]);
+  store.set(patch);
   await refresh();
 }
 
+export async function startTimer(opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode } = {}) {
+  const { mode, ...target } = opts;
+  if (mode === "pomodoro") return Focus.startPomodoro(target);
+  if (mode === "flowtime") return Focus.startFlowtime(target);
+  return Focus.startStopwatch(target);
+}
+
+export async function stopTimer(at = Date.now()) {
+  return Focus.stop(at);
+}
+
+export async function pauseTimer() {
+  return Focus.pause();
+}
+
 export async function resumeTimer() {
-  const { paused: p, focus: f, running } = store.get();
-  if (!p) return;
-  const now = Date.now();
-  const mode = f ? (f.phase === "break" ? running?.mode ?? f.kind : f.kind) : undefined;
-  await startTimer({ blockId: p.blockId, categoryId: p.categoryId, tagIds: p.tagIds, title: p.title, accumulatedMs: p.accumulatedMs, mode, keepFocus: true });
-  if (f && f.pausedRemaining !== null) await setFocusState({ ...f, phaseEnd: now + f.pausedRemaining, pausedRemaining: null });
+  return Focus.resume();
 }
 
 export async function toggleTimer() {
   const s = store.get();
   if (s.running) return stopTimer();
   if (s.paused) return resumeTimer();
-  if (s.focus?.phase === "ready") return focusNextRound();
+  const f = s.focus;
+  if (f?.phase === "suggest") return Focus.startBreak();
+  if (f?.phase === "ready" || f?.phase === "done") return Focus.nextRound();
+  if (f?.phase === "break") return Focus.stop();
   const sel = s.selection;
   if (sel?.kind === "block") return startTimer({ blockId: sel.id });
   return startTimer({});
+}
+
+/** Stopwatch only: Pomodoro and Flowtime handle sleep inside the engine (they pause themselves). */
+function usesSleepBanner(): boolean {
+  const f = store.get().focus;
+  return !f || f.kind === "stopwatch";
 }
 
 /** Called periodically while a session runs. Detects sleep / suspended app. */
@@ -650,38 +603,26 @@ export async function heartbeat(lastTick: number) {
   if (!s.running || !s.db) return;
   const now = Date.now();
   const GAP = 5 * MINUTE;
-  if (now - lastTick > GAP && !s.sleepGap) {
+  if (now - lastTick > GAP && !s.sleepGap && usesSleepBanner()) {
     store.set({ sleepGap: { sessionId: s.running.id, from: lastTick, to: now } });
   }
   await s.db.batch([repo.setSettingStmt(HEARTBEAT_KEY, now)]);
 }
 
-/** On startup: if a session was running and the last heartbeat is old, ask the user. */
+/** On startup: if a stopwatch was running and the last heartbeat is old, ask the user. */
 export async function checkSleepOnStartup() {
   const s = store.get();
-  if (!s.running || !s.db) return;
+  if (!s.running || !s.db || !usesSleepBanner()) return;
   const last = await repo.getSetting<number>(s.db, HEARTBEAT_KEY);
   const now = Date.now();
   if (last && now - last > 10 * MINUTE) store.set({ sleepGap: { sessionId: s.running.id, from: last, to: now } });
 }
 
 export async function resolveSleepGap(choice: "keep" | "exclude" | "stop") {
-  const s = store.get();
-  const gap = s.sleepGap;
+  const gap = store.get().sleepGap;
   store.set({ sleepGap: null });
-  if (!gap || choice === "keep" || !s.running) return;
-  if (choice === "stop") return stopTimer(gap.from);
-  // exclude: end at gap start, then continue as a new segment from now
-  const r = s.running;
-  const now = Date.now();
-  const acc = s.runAccumulatedMs + (gap.from - r.startAt);
-  await db().batch([
-    ...repo.upsertSessionStmts({ ...r, endAt: gap.from, updatedAt: now }),
-    ...repo.upsertSessionStmts({ ...r, id: repo.newId(), startAt: now, endAt: null, createdAt: now, updatedAt: now }),
-    repo.setSettingStmt("timer.accumulated", acc),
-  ]);
-  store.set({ runAccumulatedMs: acc });
-  await refresh();
+  if (!gap || !store.get().running) return;
+  await Focus.resolveStopwatchGap(choice, gap);
 }
 
 // ------------------------------------------------------------------ backups

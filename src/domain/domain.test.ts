@@ -7,7 +7,9 @@ import { canMerge, dragToInterval, layoutColumns, moveInterval, pxToMinute, resi
 import type { Block, Category, Session } from "./types";
 import { fmtClock, fmtDuration, isoLocal } from "./format";
 import { parseCsv, toCsv } from "./csv";
-import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./focus";
+import { flowtimeBreakMinutes, breakLength, clockValue, deadlineOf, derive, normalizeFocus, progressValue, remaining, snapshotOf, suggestBlock, timerStatus, type FocusState } from "./focus";
+import { computeFocusStats } from "./focusStats";
+import type { FocusRun } from "./types";
 import { activeRuns } from "./analytics";
 import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
 import { buildDayLog, dayLogMarkdown, rangeLogMarkdown } from "./daylog";
@@ -320,11 +322,118 @@ describe("focus transitions", () => {
     const p = { focus: 25, brk: 5, long: 15, every: 4 };
     expect([1, 2, 3, 4, 5, 8].map((r) => breakLength(p, r))).toEqual([5, 5, 5, 15, 5, 15]);
   });
-  it("nothing happens while paused or before the deadline", () => {
-    const f: FocusState = { kind: "pomodoro", phase: "focus", preset: { focus: 25, brk: 5, long: 15, every: 4 }, phaseStart: 0, phaseEnd: 1000, round: 0, pausedRemaining: null, suggestedBreakMin: null, categoryId: "c", tagIds: [], title: null, blockId: null };
-    expect(nextStep(f, 999).type).toBe("none");
-    expect(nextStep({ ...f, pausedRemaining: 5 }, 5000).type).toBe("none");
-    expect(nextStep(f, 1000)).toEqual({ type: "focus-done", at: 1000, breakMinutes: 5, round: 1 });
+  const base = (over: Partial<FocusState> = {}): FocusState =>
+    derive({
+      kind: "pomodoro",
+      phase: "focus",
+      preset: { focus: 25, brk: 5, long: 15, every: 4 },
+      cycleId: "c1",
+      runId: "r1",
+      rev: 1,
+      round: 0,
+      breakKind: null,
+      phaseStart: 0,
+      phaseMs: 25 * MINUTE,
+      activeMs: 0,
+      segStart: 0,
+      phaseEnd: null,
+      pausedRemaining: null,
+      suggestedBreakMin: null,
+      recorded: true,
+      completed: null,
+      categoryId: "c",
+      tagIds: [],
+      title: null,
+      blockId: null,
+      ...over,
+    });
+
+  it("derives the deadline from stored timestamps; pauses freeze it", () => {
+    const f = base();
+    expect(deadlineOf(f)).toBe(25 * MINUTE);
+    expect(remaining(f, 10 * MINUTE)).toBe(15 * MINUTE);
+    // paused after 10 minutes, resumed at 60: the deadline moves by the pause
+    const paused = base({ activeMs: 10 * MINUTE, segStart: null });
+    expect(deadlineOf(paused)).toBeNull();
+    expect(paused.pausedRemaining).toBe(15 * MINUTE);
+    expect(remaining(paused, 999 * MINUTE)).toBe(15 * MINUTE);
+    expect(deadlineOf(base({ activeMs: 10 * MINUTE, segStart: 60 * MINUTE }))).toBe(75 * MINUTE);
+  });
+
+  it("maps to the seven user-facing states", () => {
+    expect(timerStatus(null)).toBe("idle");
+    expect(timerStatus(base())).toBe("focusing");
+    expect(timerStatus(base({ segStart: null }))).toBe("focus_paused");
+    expect(timerStatus(base({ phase: "break", breakKind: "short" }))).toBe("short_break");
+    expect(timerStatus(base({ phase: "break", breakKind: "long" }))).toBe("long_break");
+    expect(timerStatus(base({ phase: "break", breakKind: "short", segStart: null }))).toBe("break_paused");
+    expect(timerStatus(base({ phase: "ready", segStart: null }))).toBe("completed");
+  });
+
+  it("snapshot clock: countdown while running, frozen while paused, count-up for flowtime", () => {
+    const cats = [{ id: "c", name: "Studying", color: "#8bbca0" }];
+    const input = { running: null, paused: null, runAccumulatedMs: 0, categories: cats };
+    const run = snapshotOf({ ...input, focus: base() });
+    expect(run).toMatchObject({ status: "focusing", label: "Focus 1 of 4", next: "Short break · 5 min", categoryName: "Studying", roundOf: 4 });
+    expect(clockValue(run, 10 * MINUTE)).toBe(15 * MINUTE);
+    expect(progressValue(run, 10 * MINUTE)).toBeCloseTo(0.4);
+    const p = snapshotOf({ ...input, focus: base({ activeMs: 10 * MINUTE, segStart: null }) });
+    expect(clockValue(p, 500 * MINUTE)).toBe(15 * MINUTE);
+    const flow = snapshotOf({ ...input, focus: base({ kind: "flowtime", phaseMs: null, activeMs: 5 * MINUTE, segStart: 20 * MINUTE }) });
+    expect(clockValue(flow, 30 * MINUTE)).toBe(15 * MINUTE);
+    expect(progressValue(flow, 30 * MINUTE)).toBeNull();
+    expect(snapshotOf({ ...input, focus: base({ round: 3 }) }).next).toBe("Long break · 15 min");
+  });
+
+  it("upgrades a timer saved by v0.3 without losing its deadline", () => {
+    const legacy = { kind: "pomodoro", phase: "focus", preset: { focus: 25, brk: 5, long: 15, every: 4 }, phaseStart: 1000, phaseEnd: 1000 + 25 * MINUTE, round: 0, pausedRemaining: null, suggestedBreakMin: null, categoryId: "c", tagIds: [], title: null, blockId: null };
+    const f = normalizeFocus(legacy)!;
+    expect(deadlineOf(f)).toBe(1000 + 25 * MINUTE);
+    const pausedLegacy = normalizeFocus({ ...legacy, pausedRemaining: 5 * MINUTE })!;
+    expect(pausedLegacy.segStart).toBeNull();
+    expect(pausedLegacy.pausedRemaining).toBe(5 * MINUTE);
+    expect(normalizeFocus(null)).toBeNull();
+    expect(normalizeFocus({ nonsense: true })).toBeNull();
+  });
+
+  it("offers the block happening now, else one starting within 15 minutes", () => {
+    const b = (id: string, h0: number, h1: number, status = "planned") => ({ id, startAt: t(2026, 11, 25, h0), endAt: t(2026, 11, 25, h1), status });
+    const blocks = [b("a", 9, 11), b("b", 11, 12), b("skip", 9, 12, "skipped")];
+    expect(suggestBlock(blocks, t(2026, 11, 25, 10))).toMatchObject({ block: { id: "a" }, when: "now" });
+    expect(suggestBlock(blocks, t(2026, 11, 25, 10, 50))).toMatchObject({ block: { id: "a" }, when: "now" });
+    expect(suggestBlock([b("b", 11, 12)], t(2026, 11, 25, 10, 50))).toMatchObject({ block: { id: "b" }, when: "soon" });
+    expect(suggestBlock([b("b", 11, 12)], t(2026, 11, 25, 10, 30))).toBeNull();
+    expect(suggestBlock([b("skip", 9, 12, "skipped")], t(2026, 11, 25, 10))).toBeNull();
+  });
+
+  it("focus statistics: timer time only, overlaps resolved, runs counted, breaks summed", () => {
+    const cats = [{ id: "w", isBreak: false }, { id: "b", isBreak: true }] as Category[];
+    const sess = (id: string, cat: string, h0: number, m0: number, h1: number, m1: number, mode: Session["mode"], tagIds: string[] = []) =>
+      ({ id, categoryId: cat, startAt: t(2026, 11, 25, h0, m0), endAt: t(2026, 11, 25, h1, m1), mode, tagIds, createdAt: 0 }) as unknown as Session;
+    const run = (id: string, phase: FocusRun["phase"], h: number, activeMin: number, outcome: FocusRun["outcome"], endsCycle = false) =>
+      ({ id, cycleId: "c", kind: "pomodoro", phase, round: 1, startedAt: t(2026, 11, 25, h), endedAt: t(2026, 11, 25, h) + activeMin * MINUTE, plannedMs: null, activeMs: activeMin * MINUTE, outcome, endsCycle, categoryId: "w", blockId: null, createdAt: 0, updatedAt: 0 }) as FocusRun;
+    const st = computeFocusStats({
+      sessions: [
+        sess("p1", "w", 9, 0, 9, 25, "pomodoro", ["houdini"]),
+        sess("br", "b", 9, 25, 9, 30, "pomodoro"),
+        sess("m", "w", 9, 20, 10, 0, "manual"), // typed in by hand: overlaps, wins 9:20-10:00, not focus time
+        sess("sw", "w", 14, 0, 15, 0, "stopwatch"),
+      ],
+      runs: [run("r1", "focus", 9, 25, "completed", true), run("r2", "short_break", 9, 5, "completed"), run("r3", "focus", 14, 60, "completed"), run("r4", "focus", 16, 0.5, "stopped")],
+      categories: cats,
+      range: { start: t(2026, 11, 25), end: t(2026, 11, 26) },
+      now: t(2026, 11, 25, 20),
+      bucket: "day",
+      weekStartsOn: 1,
+    });
+    expect(st.focusMs).toBe(80 * MINUTE); // 9:00-9:20 (the manual entry started later and wins the overlap) + 60
+    expect(st.byTag).toEqual([{ tagId: "houdini", ms: 20 * MINUTE }]);
+    expect(st.sessions).toBe(2); // the 30-second false start is not a session
+    expect(st.completed).toBe(2);
+    expect(st.avgMs).toBe(42.5 * MINUTE);
+    expect(st.cycles).toBe(1);
+    expect(st.breakMs).toBe(5 * MINUTE);
+    expect(st.buckets).toEqual([{ key: "2026-11-25", start: t(2026, 11, 25), ms: 80 * MINUTE }]);
   });
 });
 

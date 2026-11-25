@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "timer-windows",
+  "description": "Floating mini timer and completion popup: render the shared timer and send commands to the main window",
+  "windows": [
+    "mini",
+    "popup"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging"
+  ]
+}

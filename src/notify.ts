@@ -5,7 +5,7 @@ import { toast } from "./state/actions";
 
 let permission: boolean | null = null;
 
-async function systemNotify(title: string, body: string) {
+export async function systemNotify(title: string, body: string) {
   if (isTauri()) {
     const n = await import("@tauri-apps/plugin-notification");
     if (permission === null) permission = (await n.isPermissionGranted()) || (await n.requestPermission()) === "granted";
@@ -17,7 +17,7 @@ async function systemNotify(title: string, body: string) {
   if (Notification.permission === "granted") new Notification(title, { body });
 }
 
-/** A soft two-note chime, synthesised (no audio assets). */
+/** A soft two-note chime, synthesised (kept as a fallback where audio files cannot play). */
 export function chime() {
   try {
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -48,7 +48,7 @@ export function chime() {
 export function notify(title: string, body: string) {
   const s = store.get().settings;
   toast(`${title} · ${body}`);
-  if (s.sounds) chime();
+  if (s.sounds && s.focusNotify !== "silent") void import("./sound").then((m) => m.playSound("breakEnd"));
   if (s.notifications && (typeof document === "undefined" || document.visibilityState !== "visible" || !document.hasFocus())) {
     void systemNotify(title, body).catch(() => {});
   }

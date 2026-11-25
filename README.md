@@ -66,6 +66,21 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 
 ---
 
+## Focus timer (v0.4) status
+
+| Area | State |
+|---|---|
+| Docked Focus timer panel under Activities: Pomodoro / Stopwatch / Flowtime, big clock, phase, progress bar, cycle dots, 25/50/90 presets, start/pause/resume/stop/reset, skip, +5/+10 | ✅ |
+| One timer engine shared by every window, persisted timestamps; survives minimize, sleep, restart and crashes without double-counting | ✅ |
+| Auto-start breaks and auto-start focus (independent), short/long breaks, cycles | ✅ |
+| Calendar: start offers the current or next planned block (category + tags inherited), unlink/relink, several rounds per block, runs past the block end | ✅ |
+| Floating mini timer window (standard + compact), always on top, opacity, click-through, remembered position, auto on minimize, hides over fullscreen apps, double-click restores Interval | ✅ |
+| Tray: live tooltip, start/pause/resume, stop, skip break, floating timer, click-through, restore, exit; minimize/close to tray | ✅ |
+| Completion: silent / sound + Windows notification / sound + small popup that never steals focus (Start break, +5 focus, Finish…) | ✅ |
+| Original sounds for focus start/end, break start/end and cycle end; master + per-sound volume, preview, custom files | ✅ |
+| System-wide shortcuts (start/pause, floating timer, click-through) | ✅ |
+| Statistics › Focus timer: focused time, sessions, average, cycles, break time, by category/tag, by day/week/month/year | ✅ |
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.

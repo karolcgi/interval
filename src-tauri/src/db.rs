@@ -16,6 +16,14 @@ use tauri::{AppHandle, Manager, State};
 #[derive(Default)]
 pub struct Db(pub Mutex<Option<(Connection, PathBuf)>>);
 
+impl Db {
+    /// Folder holding the open database (the data folder).
+    pub fn data_dir(&self) -> Option<PathBuf> {
+        let guard = self.0.lock().ok()?;
+        guard.as_ref().and_then(|(_, p)| p.parent().map(Path::to_path_buf))
+    }
+}
+
 #[derive(Deserialize)]
 pub struct Stmt {
     sql: String,
