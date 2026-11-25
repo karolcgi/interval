@@ -145,11 +145,11 @@ try {
   // 5. Compact layout from Settings › Focus timer
   await panel.getByRole("button", { name: "Focus timer settings" }).click();
   await page.locator("#focus-timer").waitFor();
+  await page.getByRole("tab", { name: "Floating timer & tray" }).click();
   await page.getByRole("radiogroup", { name: "Floating timer layout" }).getByRole("radio", { name: "Compact" }).click();
   await mini.locator(".float-root.mini.compact").waitFor();
   await mini.setViewportSize({ width: 188, height: 40 });
   await shot("focus-mini-compact", mini);
-  await page.locator("#focus-timer").scrollIntoViewIfNeeded();
   await shot("focus-settings");
   await page.getByRole("radiogroup", { name: "Floating timer layout" }).getByRole("radio", { name: "Standard" }).click();
   await mini.locator(".float-root.mini.standard").waitFor();
@@ -225,6 +225,85 @@ try {
   const w3 = (await side.boundingBox()).width;
   if (Math.abs(w3 - w0) > 2) await fail(`double-click should reset to ${w0}, got ${w3}`);
   ok(`Sidebar resizes by dragging its edge (${Math.round(w0)} → ${Math.round(w1)}px), is remembered, double-click resets`);
+
+  // 10. Abandon: a discarded session leaves no trace in the history
+  await page.locator(".nav-item", { hasText: "Statistics" }).click();
+  await page.getByRole("tab", { name: "Today" }).click();
+  const sessionsKpi = page.locator(".focus-history .kpi").filter({ hasText: "Focus sessions" }).locator(".kpi-val");
+  await expectText(sessionsKpi, /^1$/, "one session before abandoning");
+  await panel.locator(".ftp-controls .btn-focus", { hasText: "Start" }).click();
+  await page.locator(".focus-panel.is-running").waitFor();
+  await ctx.clock.runFor(180_000);
+  await panel.getByRole("button", { name: "Abandon" }).click();
+  await panel.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Discard" }).click();
+  await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
+  await expectText(page.locator(".toast"), /Session discarded/, "discard toast");
+  await page.locator(".nav-item", { hasText: "Day log" }).click();
+  await page.locator(".nav-item", { hasText: "Statistics" }).click();
+  await expectText(sessionsKpi, /^1$/, "still one session after abandoning");
+  ok("Abandon → confirm discards the running session; history still shows only the earlier session");
+
+  // 11. Mini timer edit view: name (with an emoji), category, length, start, keep on top
+  await mini.setViewportSize({ width: 288, height: 460 });
+  await mini.getByRole("button", { name: "Edit session" }).click();
+  await mini.getByRole("textbox", { name: "Session name" }).fill("Lookdev pass");
+  await mini.getByRole("button", { name: "Session icon" }).click();
+  await mini.getByRole("textbox", { name: "Search emoji" }).fill("coffee");
+  await mini.getByRole("textbox", { name: "Search emoji" }).press("Enter");
+  if ((await mini.getByRole("textbox", { name: "Session name" }).inputValue()) !== "☕ Lookdev pass") await fail("emoji not put in front of the name");
+  await mini.getByRole("listbox", { name: "Category" }).getByRole("option", { name: "Studying" }).click();
+  await mini.locator(".mt-lengths").getByRole("button", { name: /^15/ }).click();
+  await shot("focus-mini-edit", mini);
+  await mini.locator(".mt-edit").getByRole("button", { name: /^Start/ }).click();
+  await page.locator(".focus-panel.is-running").waitFor();
+  await expectText(panel.locator(".ftp-cat-name"), /Studying/, "category from the mini timer");
+  await expectText(panel.locator(".ftp-clock"), /1[45]:\d\d/, "15 minute round");
+  await expectText(panel.locator(".ftp-title"), /☕ Lookdev pass/, "name from the mini timer");
+  const pin = mini.getByRole("button", { name: /Keep on top|Stop keeping on top/ });
+  const pinned = await pin.getAttribute("aria-pressed");
+  await pin.click();
+  await mini.waitForFunction((was) => document.querySelector(".mt-top [aria-pressed]")?.getAttribute("aria-pressed") !== was, pinned);
+  if (!(await mini.locator(".mt-edit").count())) await mini.getByRole("button", { name: "Edit session" }).click();
+  await mini.getByRole("button", { name: "Abandon" }).click();
+  await mini.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Discard" }).click();
+  await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
+  ok("Mini timer: name + emoji, category, 15 min length and Start drive the main timer; pin toggles on-top; abandon works there too");
+
+  // 12. Settings are split into tabs
+  await page.locator(".nav-item", { hasText: "Settings" }).click();
+  for (const [tab, section] of [["General", "Appearance"], ["Alerts & sounds", "Sounds"], ["Floating timer & tray", "Close to tray"], ["Data & updates", "Updates"]]) {
+    await page.getByRole("tab", { name: tab }).click();
+    await page.getByText(section, { exact: false }).first().waitFor({ timeout: 5000 }).catch(() => fail(`${tab} tab should show ${section}`));
+  }
+  if (!(await page.getByRole("checkbox", { name: "Close to tray" }).isChecked().catch(() => false))) {
+    await page.getByRole("tab", { name: "Floating timer & tray" }).click();
+    if (!(await page.getByRole("checkbox", { name: "Close to tray" }).isChecked())) await fail("close to tray should default to on");
+  }
+  await shot("settings-tabs");
+  ok("Settings are split into tabs; close-to-tray is on by default");
+
+  // 13. Category emoji + colours; block title emoji from the inspector
+  await page.locator(".nav-item", { hasText: "Categories" }).click();
+  const row = page.locator(".cat-grid[data-name='Studying']");
+  await row.getByRole("button", { name: "Change colour" }).click();
+  const swatches = await row.locator(".swatches .swatch:not(.custom)").count();
+  if (swatches < 24) await fail(`expected 24+ colours, got ${swatches}`);
+  await row.getByRole("button", { name: "Change colour" }).click();
+  await row.getByRole("button", { name: "Category icon" }).click();
+  await page.getByRole("textbox", { name: "Search emoji" }).fill("book");
+  await page.getByRole("dialog", { name: "Pick an emoji" }).getByRole("button", { name: /📚/ }).click();
+  await expectText(page.locator(".sidebar .cat-row", { hasText: "Studying" }).locator(".cat-emoji"), /📚/, "emoji shown in Activities");
+  await shot("categories-emoji");
+  await page.locator(".nav-item", { hasText: "Today" }).first().click();
+  const blk = page.locator(".tl-col .block").first();
+  await blk.click();
+  await page.getByRole("button", { name: "Title icon" }).click();
+  await page.getByRole("textbox", { name: "Search emoji" }).fill("rocket");
+  await page.getByRole("textbox", { name: "Search emoji" }).press("Enter");
+  await expectText(page.locator(".insp-title-row .emoji-trigger"), /🚀/, "title icon set");
+  if (!/^🚀 /.test(await page.locator(".insp-title").inputValue())) await fail("block title should start with 🚀");
+  await shot("block-title-emoji");
+  ok(`${swatches} category colours; category emoji shows in Activities; emoji in front of a block title from the inspector`);
 
   if (errors.length) throw new Error(`Console errors:\n${errors.join("\n")}`);
   console.log(`\nAll ${step} focus timer steps passed.`);

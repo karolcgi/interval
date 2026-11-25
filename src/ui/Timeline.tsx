@@ -11,6 +11,7 @@
 //   Ctrl + wheel                -> zoom
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { startsWithEmoji } from "./EmojiPicker";
 import { Check, Play, Repeat } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
@@ -577,7 +578,7 @@ function BlockView(p: {
       <div className="block-body">
         <div className="block-title">
           {b.recurrenceId && <Repeat size={10} />}
-          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} /> : <span className={b.title ? "" : "unnamed"}>{label}</span>}
+          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} /> : <span className={b.title ? "" : "unnamed"}>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>}
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && (

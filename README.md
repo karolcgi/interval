@@ -81,6 +81,18 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 | System-wide shortcuts (start/pause, floating timer, click-through) | ✅ |
 | Statistics › Focus timer: focused time, sessions, average, cycles, break time, by category/tag, by day/week/month/year | ✅ |
 
+## v0.5 status
+
+| Area | State |
+|---|---|
+| Abandon: discard the running session (or break) so nothing is recorded, with a confirm step; from the panel or the floating timer | ✅ |
+| Floating timer edit view: name the session, pick a category, pick the length (15/25/50/90 or custom), start; keep-on-top toggle; open Interval | ✅ |
+| Closing the main window keeps Interval in the tray (on by default); the floating timer stays up; tray › Exit Interval quits | ✅ |
+| Settings split into tabs (General, Calendar, Focus timer, Alerts & sounds, Floating timer & tray, Obsidian, Data & updates, Keyboard) | ✅ |
+| 28 category colours (16 new) | ✅ |
+| Emoji icons: per category (shown in place of the colour dot), and in front of block/session names (inspector, floating timer) | ✅ |
+| Left sidebar resizable by dragging its edge (180–440 px), remembered; double-click resets | ✅ |
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.

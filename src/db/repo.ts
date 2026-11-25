@@ -23,6 +23,7 @@ function toCategory(r: Row): Category {
     name: String(r.name),
     color: String(r.color),
     icon: str(r.icon),
+    emoji: str(r.emoji),
     parentId: str(r.parent_id),
     sortOrder: Number(r.sort_order),
     shortcut: str(r.shortcut),
@@ -40,12 +41,12 @@ export async function listCategories(db: DbDriver): Promise<Category[]> {
 
 export function upsertCategoryStmt(c: Category): Statement {
   return {
-    sql: `INSERT INTO categories (id, name, color, icon, parent_id, sort_order, shortcut, is_break, archived_at, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, icon=excluded.icon,
+    sql: `INSERT INTO categories (id, name, color, icon, emoji, parent_id, sort_order, shortcut, is_break, archived_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, icon=excluded.icon, emoji=excluded.emoji,
             parent_id=excluded.parent_id, sort_order=excluded.sort_order, shortcut=excluded.shortcut,
             is_break=excluded.is_break, archived_at=excluded.archived_at, updated_at=excluded.updated_at`,
-    params: [c.id, c.name, c.color, c.icon, c.parentId, c.sortOrder, c.shortcut, c.isBreak ? 1 : 0, c.archivedAt, c.createdAt, c.updatedAt],
+    params: [c.id, c.name, c.color, c.icon, c.emoji ?? null, c.parentId, c.sortOrder, c.shortcut, c.isBreak ? 1 : 0, c.archivedAt, c.createdAt, c.updatedAt],
   };
 }
 

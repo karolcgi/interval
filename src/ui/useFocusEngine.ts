@@ -61,7 +61,17 @@ export function currentSnapshot(s: AppState = store.get()): TimerSnapshot {
 function broadcastOf(s: AppState): TimerBroadcast {
   return {
     ...currentSnapshot(s),
-    ui: { theme: resolvedTheme(s.settings), layout: s.settings.miniLayout, opacity: s.settings.miniOpacity, clickThrough: s.settings.miniClickThrough, takesFocus: s.settings.focusPopupTakesFocus },
+    ui: {
+      theme: resolvedTheme(s.settings),
+      layout: s.settings.miniLayout,
+      opacity: s.settings.miniOpacity,
+      clickThrough: s.settings.miniClickThrough,
+      takesFocus: s.settings.focusPopupTakesFocus,
+      onTop: s.settings.miniOnTop,
+      categories: s.categories.filter((c) => !c.archivedAt && !c.isBreak).map((c) => ({ id: c.id, name: c.name, color: c.color, icon: c.emoji ?? null })),
+      focusMin: s.settings.pomodoroFocus,
+      mode: s.settings.focusTimerMode,
+    },
   };
 }
 

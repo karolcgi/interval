@@ -189,6 +189,12 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX idx_focus_runs_start ON focus_runs(started_at)`,
     ],
   },
+  {
+    version: 5,
+    name: "category emoji",
+    // An optional emoji shown in front of a category's name. (`icon` keeps the unused v1 icon names.)
+    up: [`ALTER TABLE categories ADD COLUMN emoji TEXT`],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

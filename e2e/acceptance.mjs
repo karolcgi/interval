@@ -169,6 +169,7 @@ try {
 
   // 13. Export
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Data & updates" }).click();
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV" }).click()]);
   const csvPath = new URL("export.csv", OUT).pathname;
   await dl.saveAs(csvPath);

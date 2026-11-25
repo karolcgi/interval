@@ -1,7 +1,7 @@
 // Docked focus timer in the sidebar, under Activities. Renders the shared timer; every action goes
 // through the engine (state/focus.ts), exactly like the tray, the floating timer and the popup.
-import { useCallback, useMemo, useRef } from "react";
-import { ChevronDown, Link2, PictureInPicture2, Play, Pause, RotateCcw, Settings2, SkipForward, Square, Unlink, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { ChevronDown, Link2, Trash2, PictureInPicture2, Play, Pause, RotateCcw, Settings2, SkipForward, Square, Unlink, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as F from "../state/focus";
@@ -217,6 +217,7 @@ function ModeTabs({ value, onChange }: { value: string; onChange: (v: "pomodoro"
 }
 
 function Controls({ snap, idle, onStart }: { snap: TimerSnapshot; idle: boolean; onStart: () => void }) {
+  const [confirm, setConfirm] = useState(false);
   const mini = (
     <button className="icon-btn sm" onClick={() => run(toggleMini())} aria-label="Floating timer" title="Floating timer">
       <PictureInPicture2 size={13} />
@@ -263,6 +264,7 @@ function Controls({ snap, idle, onStart }: { snap: TimerSnapshot; idle: boolean;
   const paused = snap.status === "focus_paused" || snap.status === "break_paused";
   const onBreak = isBreakStatus(snap.status);
   return (
+    <>
     <div className="ftp-controls">
       {paused ? (
         <button className={`btn ${onBreak ? "btn-break" : "btn-focus"} sm`} onClick={() => run(F.resume())} aria-label="Resume">
@@ -286,8 +288,38 @@ function Controls({ snap, idle, onStart }: { snap: TimerSnapshot; idle: boolean;
           <SkipForward size={12} />
         </button>
       )}
+      <button className="icon-btn sm" onClick={() => setConfirm(true)} aria-label="Abandon" title={onBreak ? "Abandon this break (not recorded)" : "Abandon this session: nothing is recorded"}>
+        <Trash2 size={12} />
+      </button>
       <span className="ftp-spacer" />
       {mini}
+    </div>
+    {confirm && <AbandonConfirm onBreak={onBreak} onDone={() => setConfirm(false)} onConfirm={() => run(F.abandon())} />}
+    </>
+  );
+}
+
+/** Second step of Abandon, so a stray click never throws away an hour of work. */
+export function AbandonConfirm(p: { onBreak: boolean; onConfirm: () => void; onDone: () => void }) {
+  const keep = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    keep.current?.focus();
+    const t = setTimeout(p.onDone, 8000);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && p.onDone();
+    window.addEventListener("keydown", onKey);
+    return () => (clearTimeout(t), window.removeEventListener("keydown", onKey));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="abandon-confirm" role="alertdialog" aria-label="Abandon session">
+      <span>{p.onBreak ? "Discard this break?" : "Discard this session?"} Nothing is recorded.</span>
+      <span className="abandon-actions">
+        <button className="btn btn-danger sm" onClick={() => (p.onConfirm(), p.onDone())}>
+          Discard
+        </button>
+        <button ref={keep} className="btn btn-ghost sm" onClick={p.onDone}>
+          Keep
+        </button>
+      </span>
     </div>
   );
 }
@@ -327,7 +359,7 @@ export function CategoryPicker(p: { categories: Category[]; value: string; onCha
   return (
     <div className="ftp-cat" ref={ref} style={catVars(current?.color ?? "#888")}>
       <button type="button" className="cat-select ftp-cat-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Category: ${current?.name ?? "none"}`} onClick={toggle} onKeyDown={onKey}>
-        <CatDot color={current?.color ?? "#888"} />
+        <CatDot color={current?.color ?? "#888"} emoji={current?.emoji} />
         <span className="ftp-cat-name">{current?.name ?? "Choose a category"}</span>
         <ChevronDown size={12} className="muted" />
       </button>
@@ -343,7 +375,7 @@ export function CategoryPicker(p: { categories: Category[]; value: string; onCha
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(c.id)}
             >
-              <CatDot color={c.color} />
+              <CatDot color={c.color} emoji={c.emoji} />
               <span>
                 {c.parentId ? "↳ " : ""}
                 {c.name}

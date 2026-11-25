@@ -65,7 +65,7 @@ export function ItemContextMenu(p: Props) {
             {categories
               .filter((c) => !c.archivedAt)
               .map((c) => (
-                <MenuItem key={c.id} icon={<CatDot color={c.color} />} label={c.name} hint={c.shortcut ?? undefined} checked={c.id === item.categoryId} onClick={run(() => setCategory(c.id))} />
+                <MenuItem key={c.id} icon={<CatDot color={c.color} emoji={c.emoji} />} label={c.name} hint={c.shortcut ?? undefined} checked={c.id === item.categoryId} onClick={run(() => setCategory(c.id))} />
               ))}
           </div>
         )}

@@ -57,7 +57,7 @@ export function Sidebar() {
         <ul className="cat-list">
           {active.map((c) => (
             <li key={c.id} className="cat-row" title={c.shortcut ? `Shortcut: ${c.shortcut}` : undefined}>
-              <CatDot color={c.color} />
+              <CatDot color={c.color} emoji={c.emoji} />
               <span className="cat-name">{c.name}</span>
               <span className="cat-time">{recordedById.get(c.id) ? fmtDuration(recordedById.get(c.id)!, { compact: true }) : ""}</span>
             </li>

@@ -12,6 +12,11 @@ export interface FloatUi {
   opacity: number;
   clickThrough: boolean;
   takesFocus: boolean;
+  onTop: boolean;
+  /** For the floating timer's edit view. */
+  categories: Array<{ id: string; name: string; color: string; icon: string | null }>;
+  focusMin: number;
+  mode: "pomodoro" | "flowtime" | "stopwatch";
 }
 
 export type TimerBroadcast = TimerSnapshot & { ui: FloatUi };
@@ -99,4 +104,10 @@ export async function closeWindow(which: "mini" | "popup") {
   if (!isTauri()) return;
   if (which === "mini") await tauriInvoke("mini_show", { open: false });
   else await tauriInvoke("popup_close");
+}
+
+/** Floating timer: grow for the edit view, shrink back (desktop only). */
+export async function miniExpand(expanded: boolean, height?: number) {
+  if (!isTauri()) return;
+  await tauriInvoke("mini_expand", { expanded, height: height ?? null }).catch(() => {});
 }

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { SmilePlus } from "lucide-react";
+import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
 import { Ban, Check, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
@@ -242,6 +244,22 @@ function TextField(p: { value: string | null; placeholder: string; onCommit: (v:
   );
 }
 
+/** Title input with an emoji button that sets (or swaps) the emoji in front of the name. */
+function TitleField(p: { value: string | null; placeholder: string; onCommit: (v: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const lead = leadingEmoji(p.value);
+  const has = startsWithEmoji(p.value);
+  return (
+    <div className="insp-title-row">
+      <button className={`emoji-trigger ${has ? "has" : ""}`} onClick={() => setOpen((v) => !v)} title={has ? "Change icon" : "Add an icon"} aria-label="Title icon">
+        {has ? lead : <SmilePlus size={15} />}
+      </button>
+      {open && <EmojiPicker canClear={has} onPick={(e) => p.onCommit(withLeadingEmoji(p.value, e) || null)} onClose={() => setOpen(false)} />}
+      <TextField className="insp-title" value={p.value} placeholder={p.placeholder} onCommit={p.onCommit} />
+    </div>
+  );
+}
+
 function InspectorHead({ color, label, onClose }: { color: string; label: string; onClose: () => void }) {
   return (
     <div className="insp-head" style={catVars(color)}>
@@ -274,7 +292,7 @@ function BlockInspector({ block }: { block: Block }) {
   return (
     <div className="panel-inner insp">
       <InspectorHead color={cat?.color ?? "#888"} label="Planned block" onClose={() => A.select(null)} />
-      <TextField className="insp-title" value={block.title} placeholder={cat?.name ?? "Title"} onCommit={(title) => upd({ title }, "Rename block")} />
+      <TitleField value={block.title} placeholder={cat?.name ?? "Title"} onCommit={(title) => upd({ title }, "Rename block")} />
       <div className="insp-row">
         <CategorySelect categories={categories} value={block.categoryId} includeArchivedId={block.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} />
       </div>
@@ -418,7 +436,7 @@ function SessionInspector({ session }: { session: Session }) {
   return (
     <div className="panel-inner insp">
       <InspectorHead color={cat?.color ?? "#888"} label={running ? "Recording now" : "Recorded time"} onClose={() => A.select(null)} />
-      <TextField className="insp-title" value={session.title} placeholder={cat?.name ?? "Title"} onCommit={(title) => upd({ title }, "Rename session")} />
+      <TitleField value={session.title} placeholder={cat?.name ?? "Title"} onCommit={(title) => upd({ title }, "Rename session")} />
       <div className="insp-row">
         <CategorySelect categories={categories} value={session.categoryId} includeArchivedId={session.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} />
       </div>

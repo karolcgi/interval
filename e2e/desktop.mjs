@@ -83,7 +83,8 @@ try {
   await js(`const i = document.querySelector('input[aria-label="Focus minutes"]'); i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '1'); i.dispatchEvent(new Event('input', {bubbles: true})); i.dispatchEvent(new Event('change', {bubbles: true})); i.blur(); return true;`);
   await waitFor(() => js("return document.querySelector('.ftp-clock')?.textContent.trim() === '01:00'"), "1 minute focus in the panel");
   await screenshot("desktop-settings");
-  // Sound preview through Web Audio
+  // Sound preview through Web Audio (Settings › Alerts & sounds tab)
+  await click('.settings-tab', "Alerts & sounds");
   await click('button[aria-label="Preview Focus completed"]');
   await waitFor(() => js("return (window.__intervalSounds || []).includes('focusEnd')"), "sound preview to play");
   ok("Settings › Focus timer works; sound preview plays through Web Audio (bundled WAV decoded)");
@@ -97,7 +98,11 @@ try {
   const r = await invoke("mini_show", { open: true });
   if (r.err) throw new Error(`mini_show: ${r.err}`);
   await waitFor(async () => (await windows()).includes("mini"), "mini window");
-  ok("Floating mini timer window opens (async command, off the main thread)");
+  const grow = await invoke("mini_expand", { expanded: true, height: 420 });
+  if (grow.err) throw new Error(`mini_expand: ${grow.err}`);
+  const shrink = await invoke("mini_expand", { expanded: false });
+  if (shrink.err) throw new Error(`mini_expand back: ${shrink.err}`);
+  ok("Floating mini timer window opens (async command, off the main thread) and resizes for its edit view");
   await screenshot("desktop-running");
 
   // Let the round end for real: popup window + sound
@@ -114,6 +119,13 @@ try {
   await invoke("mini_show", { open: false });
   await waitFor(async () => !(await windows()).includes("mini"), "mini closed");
   ok("Popup can be shown again and closed; mini timer closes");
+
+  // Abandon from the panel: nothing recorded, back to idle
+  await waitFor(() => js("return !!document.querySelector('.focus-panel.is-running')"), "break running");
+  await click('button[aria-label="Abandon"]');
+  await click('.abandon-confirm .btn-danger');
+  await waitFor(() => js("return !document.querySelector('.focus-panel.is-running')"), "timer idle after abandon");
+  ok("Abandon discards the running break in the real app");
 
   const errs = await js("return window.__errors || []");
   if (errs.length) throw new Error(errs.join("\n"));

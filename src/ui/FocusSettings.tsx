@@ -14,7 +14,8 @@ import type { Settings, SoundEvent } from "../domain/types";
 
 const run = (p: Promise<unknown>) => void p.catch(A.reportError);
 
-export function FocusTimerSettings() {
+export function FocusTimerSettings({ part = "all" }: { part?: "all" | "timer" | "alerts" | "window" }) {
+  const show = (x: string) => part === "all" || part === x;
   const s = useApp((x) => x.settings);
   const categories = useApp((x) => x.categories);
   const anchor = useApp((x) => x.settingsAnchor);
@@ -30,6 +31,8 @@ export function FocusTimerSettings() {
 
   return (
     <>
+      {show("timer") && (
+      <>
       <h2 className="section-title" id="focus-timer" ref={ref}>
         Focus timer
       </h2>
@@ -73,6 +76,10 @@ export function FocusTimerSettings() {
         </Row>
       </div>
 
+      </>
+      )}
+      {show("alerts") && (
+      <>
       <h3 className="sub-title">Notifications</h3>
       <div className="settings-block">
         <Row label="When a round or break ends" hint="Silent: the timer only changes colour. Notification: a sound and a Windows notification. Popup: a sound and a small Interval card with the next step.">
@@ -126,6 +133,10 @@ export function FocusTimerSettings() {
         ))}
       </div>
 
+      </>
+      )}
+      {show("window") && (
+      <>
       <h3 className="sub-title">Floating timer</h3>
       <div className="settings-block">
         {!desktop && <p className="muted small pad">The floating timer, tray and system-wide shortcuts are part of the desktop app.</p>}
@@ -179,13 +190,15 @@ export function FocusTimerSettings() {
         <Row label="Minimize to tray" hint="Minimizing hides Interval from the taskbar; the timer keeps running and the tray icon brings it back">
           <input type="checkbox" checked={s.minimizeToTray} onChange={(e) => set({ minimizeToTray: e.target.checked })} aria-label="Minimize to tray" />
         </Row>
-        <Row label="Close to tray" hint="Closing the window keeps Interval in the tray. Exit from the tray menu.">
+        <Row label="Close to tray" hint="Closing the window keeps Interval, the timer and the floating timer running. Right-click the tray icon › Exit Interval to quit.">
           <input type="checkbox" checked={s.closeToTray} onChange={(e) => set({ closeToTray: e.target.checked })} aria-label="Close to tray" />
         </Row>
       </div>
 
       <h3 className="sub-title">System-wide shortcuts</h3>
       <GlobalShortcutEditor />
+      </>
+      )}
     </>
   );
 }

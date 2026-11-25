@@ -46,7 +46,7 @@ pub struct Prefs {
 impl Default for Prefs {
     fn default() -> Self {
         Prefs {
-            close_to_tray: false,
+            close_to_tray: true,
             minimize_to_tray: false,
             mini_auto: true,
             mini_on_top: true,
@@ -659,6 +659,31 @@ pub async fn mini_show<R: Runtime>(app: AppHandle<R>, open: bool) -> Result<(), 
         close_mini(&app);
         Ok(())
     }
+}
+
+/// Grow the floating timer for its edit view (name, category, length) and shrink it back. The window
+/// keeps its bottom edge, and is pulled back inside the monitor's work area when it would overflow.
+#[tauri::command]
+pub async fn mini_expand<R: Runtime>(app: AppHandle<R>, expanded: bool, height: Option<f64>) -> Result<(), String> {
+    let Some(w) = app.get_webview_window("mini") else { return Ok(()) };
+    let layout = app.state::<Shell>().prefs.lock().unwrap().mini_layout.clone();
+    let (bw, bh) = mini_size(&layout);
+    let (lw, lh) = if expanded { (bw.max(288.0), height.unwrap_or(330.0)) } else { (bw, bh) };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let before = w.outer_size().map_err(|e| e.to_string())?;
+    let pos = w.outer_position().map_err(|e| e.to_string())?;
+    let new_h = (lh * scale) as i32;
+    let mut y = pos.y + before.height as i32 - new_h;
+    let mut x = pos.x;
+    if let Ok(Some(m)) = w.current_monitor() {
+        let a = m.work_area();
+        let new_w = (lw * scale) as i32;
+        y = y.clamp(a.position.y, a.position.y + a.size.height as i32 - new_h);
+        x = x.clamp(a.position.x, a.position.x + a.size.width as i32 - new_w);
+    }
+    w.set_size(tauri::LogicalSize::new(lw, lh)).map_err(|e| e.to_string())?;
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    Ok(())
 }
 
 #[tauri::command]

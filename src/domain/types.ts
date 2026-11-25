@@ -13,7 +13,9 @@ export interface Category {
   id: Id;
   name: string;
   color: string; // hex, e.g. #8298d7
-  icon: string | null; // lucide icon name
+  icon: string | null; // lucide icon name (v1, unused)
+  /** Optional emoji shown before the name. */
+  emoji?: string | null;
   parentId: Id | null; // optional subcategory parent
   sortOrder: number;
   shortcut: string | null; // single key, e.g. "1" or "f"
@@ -231,7 +233,7 @@ export const DEFAULT_SETTINGS: Settings = {
   breakReminderMinutes: 90,
   notifications: true,
   sounds: true,
-  closeToTray: false,
+  closeToTray: true,
   workdayHours: 8,
   reviewPrompts: true,
   backupDir: null,

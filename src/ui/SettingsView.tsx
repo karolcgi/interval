@@ -27,7 +27,29 @@ export async function exportData(kind: "json" | "csv") {
   }
 }
 
+const SETTINGS_TABS = [
+  { id: "general", label: "General" },
+  { id: "calendar", label: "Calendar" },
+  { id: "focus", label: "Focus timer" },
+  { id: "alerts", label: "Alerts & sounds" },
+  { id: "window", label: "Floating timer & tray" },
+  { id: "obsidian", label: "Obsidian" },
+  { id: "data", label: "Data & updates" },
+  { id: "keyboard", label: "Keyboard" },
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
+let lastTab: SettingsTab = "general";
+
 export function SettingsView() {
+  const anchor = useApp((x) => x.settingsAnchor);
+  const [tab, setTabState] = useState<SettingsTab>(anchor === "focus-timer" ? "focus" : lastTab);
+  const setTab = (t: SettingsTab) => {
+    lastTab = t;
+    setTabState(t);
+  };
+  useEffect(() => {
+    if (anchor === "focus-timer") setTab("focus");
+  }, [anchor]);
   const s = useApp((x) => x.settings);
   const storage = useApp((x) => x.storageLabel);
   const demo = useApp((x) => x.demo);
@@ -69,8 +91,17 @@ export function SettingsView() {
           <h1 className="page-title">Settings</h1>
         </div>
       </header>
+      <nav className="settings-tabs" role="tablist" aria-label="Settings sections">
+        {SETTINGS_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} className={`settings-tab ${tab === t.id ? "on" : ""}`} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      <h2 className="section-title">Appearance</h2>
+      {tab === "general" && (
+<>
+<h2 className="section-title">Appearance</h2>
       <div className="settings-block">
         <Row label="Theme">
           <Segmented value={s.theme} onChange={(theme) => set({ theme })} options={[{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }, { value: "system", label: "System" }]} />
@@ -90,7 +121,12 @@ export function SettingsView() {
         </Row>
       </div>
 
-      <h2 className="section-title">Calendar</h2>
+      </>
+)}
+
+      {tab === "calendar" && (
+<>
+<h2 className="section-title">Calendar</h2>
       <div className="settings-block">
         <Row label="Visible hours" hint="Hours outside this range are hidden on the timeline">
           <select className="select sm" value={s.dayStartHour} onChange={(e) => set({ dayStartHour: Math.min(Number(e.target.value), s.dayEndHour - 1) })} aria-label="First hour">
@@ -126,9 +162,16 @@ export function SettingsView() {
         </Row>
       </div>
 
-      <FocusTimerSettings />
+      </>
+)}
 
-      <h2 className="section-title">Daily ritual</h2>
+      {tab === "focus" && <FocusTimerSettings part="timer" />}
+      {tab === "alerts" && <FocusTimerSettings part="alerts" />}
+      {tab === "window" && <FocusTimerSettings part="window" />}
+
+      {tab === "general" && (
+<>
+<h2 className="section-title">Daily ritual</h2>
       <div className="settings-block">
         <Row label="Suggest planning and review" hint="A quiet prompt in the day panel: plan in the morning, review in the evening. Always optional.">
           <input type="checkbox" checked={s.reviewPrompts} onChange={(e) => set({ reviewPrompts: e.target.checked })} aria-label="Suggest planning and review" />
@@ -138,7 +181,12 @@ export function SettingsView() {
         </Row>
       </div>
 
-      <h2 className="section-title">Data</h2>
+      </>
+)}
+
+      {tab === "data" && (
+<>
+<h2 className="section-title">Data</h2>
       <div className="settings-block">
         <Row label="Database" hint={isTauri() ? "Local SQLite file." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>
           <code className="path">{storage}</code>
@@ -212,14 +260,24 @@ export function SettingsView() {
         </>
       )}
 
-      <h2 className="section-title">Progress</h2>
+      </>
+)}
+
+      {tab === "general" && (
+<>
+<h2 className="section-title">Progress</h2>
       <div className="settings-block">
         <Row label="Milestone ladder" hint="Lifetime hours at which a skill or area levels up. Comma-separated.">
           <LadderField value={s.milestoneHours} onChange={(milestoneHours) => set({ milestoneHours })} />
         </Row>
       </div>
 
-      <h2 className="section-title">Obsidian</h2>
+      </>
+)}
+
+      {tab === "obsidian" && (
+<>
+<h2 className="section-title">Obsidian</h2>
       <div className="settings-block">
         <Row
           label="Notes folder"
@@ -251,7 +309,12 @@ export function SettingsView() {
         </Row>
       </div>
 
-      <h2 className="section-title">Keyboard</h2>
+      </>
+)}
+
+      {tab === "keyboard" && (
+<>
+<h2 className="section-title">Keyboard</h2>
       <ShortcutEditor />
       <div className="settings-block shortcuts">
         {[
@@ -272,6 +335,9 @@ export function SettingsView() {
           </div>
         ))}
       </div>
+      </>
+)}
+
       <p className="muted small pad-top">Interval {__APP_VERSION__} · local-first · no account, no network.</p>
     </section>
   );

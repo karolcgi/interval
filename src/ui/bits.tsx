@@ -2,7 +2,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Category } from "../domain/types";
 
-export function CatDot({ color, size = 8 }: { color: string; size?: number }) {
+export function CatDot({ color, size = 8, emoji }: { color: string; size?: number; emoji?: string | null }) {
+  // A category with an icon shows the emoji in place of the colour dot
+  if (emoji) return <span className="cat-emoji" style={{ fontSize: Math.max(11, size + 5) }} aria-hidden="true">{emoji}</span>;
   return <span className="cat-dot" style={{ background: color, width: size, height: size }} />;
 }
 
@@ -40,7 +42,7 @@ export function CategorySelect(props: { categories: Category[]; value: string; o
   const current = props.categories.find((c) => c.id === props.value);
   return (
     <div className="cat-select" style={catVars(current?.color ?? "#888")}>
-      <CatDot color={current?.color ?? "#888"} />
+      <CatDot color={current?.color ?? "#888"} emoji={current?.emoji} />
       <select value={props.value} onChange={(e) => props.onChange(e.target.value)} aria-label="Category">
         {options.map((c) => (
           <option key={c.id} value={c.id}>

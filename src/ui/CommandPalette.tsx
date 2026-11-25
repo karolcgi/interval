@@ -149,7 +149,7 @@ function Palette() {
             const c = catById.get(h.categoryId);
             return (
               <li key={h.kind + h.id} className={i === idx ? "on" : ""} onMouseEnter={() => setIdx(i)} onClick={() => runAt(i)}>
-                <CatDot color={c?.color ?? "#888"} />
+                <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} />
                 <span>{h.title || c?.name}</span>
                 <span className="muted small">
                   {h.kind === "block" ? "planned" : "recorded"} · {fmt.shortDate(h.start)} {fmtTime(h.start)}
