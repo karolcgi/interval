@@ -38,6 +38,10 @@ src/
     overlap.ts     overlap resolution policy (see §4)
     stats.ts       statistics engine (all analytics derive from raw sessions)
     calendar.ts    snapping, drag→interval, move, resize, split, merge, column layout
+    recurrence.ts  RRULE subset: parse/format, occurrences, presets
+    focus.ts       Pomodoro/Flowtime state machine (pure)
+    budgets.ts     budget periods, progress, history
+    analytics.ts   heatmap days, active-day runs
     format.ts csv.ts
   db/
     driver.ts sqljs-driver.ts tauri-driver.ts
@@ -47,12 +51,15 @@ src/
     fixtures.ts    demo data generator (demo database only)
   state/
     store.ts       app state + hooks
-    actions.ts     every user action; undo/redo; timer; sleep detection
+    actions.ts     every user action; undo/redo; timer; sleep detection; backups
+    planning.ts    recurrence materialisation, this-and-following edits, day templates
+    focus.ts       focus engine: tickFocus(now), phase transitions, break sessions
   ui/              React components (Timeline.tsx is the core interaction surface)
   bootstrap.ts     picks driver, migrates, seeds, loads
   platform.ts      file dialogs, external links, boot prefs (Tauri vs browser)
 src-tauri/         Rust shell: db.rs (SQLite), lib.rs (plugins, tray, commands)
 e2e/acceptance.mjs Phase 1 acceptance workflow in a real browser
+e2e/phase2.mjs     Phase 2 workflow: recurrence, templates, Pomodoro, Flowtime, budgets, planning/review
 ```
 
 ## 3. Data model
@@ -64,7 +71,7 @@ at creation time, so history remains interpretable after travel.
 |---|---|---|
 | `categories` | Purpose of time (Studying) | `parent_id` for subcategories, `sort_order`, `shortcut`, `is_break`, `archived_at` (never hard-deleted once used) |
 | `tags` | Subject of time (Houdini) | Unique by name, case-insensitive |
-| `blocks` | **Planned** time blocks | `status ∈ planned, in_progress, completed, skipped`, optional `title/notes/link`, `recurrence_id` (Phase 2) |
+| `blocks` | **Planned** time blocks | `status ∈ planned, in_progress, completed, skipped`, optional `title` (the block's name; UI falls back to the category name), `notes/link`, `recurrence_id`. **No colour column**: colour is always the category's. |
 | `block_tags` | Block ↔ tag | |
 | `sessions` | **Actual** recorded time | `end_at NULL` = running; `block_id` optional link to the plan; `mode ∈ manual, stopwatch, pomodoro, flowtime` |
 | `session_tags` | Session ↔ tag | |
@@ -135,6 +142,8 @@ mode. The `?demo=1` / `?db=<key>` URL parameters exist for browser preview and t
   split/merge/duplicate/paste/delete, category archive, timer from block (70 of 90 minutes), crash recovery,
   pause/resume + sleep-gap exclusion, JSON/CSV round trips, fixtures.
 - `e2e/acceptance.mjs`: spec §21 end to end with a controlled clock, including reload one week later.
+- `e2e/phase2.mjs`: recurrence (incl. deleted-stays-deleted across reload), templates with undo, Pomodoro and Flowtime
+  under a fake clock, budgets, morning planning and evening review.
 
 Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always exercised.
 
@@ -174,16 +183,28 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - The app runs in one time zone at a time; records keep their creation zone for reference.
 - Archiving a category hides it from pickers but keeps all history and statistics.
 
+## Phase 2 design notes
+
+- **Migration v2** adds `recurrence_rules.materialized_until`, `templates.sort_order`, `daily_notes.planned_at/reviewed_at`
+  and an index on `blocks.recurrence_id`. Migrations stay append-only.
+- **Recurrence**: a rule is an RRULE subset (`FREQ=DAILY|WEEKLY|MONTHLY`, `INTERVAL`, `BYDAY`, `UNTIL`). Occurrences are
+  materialised forward (at least 14 days past today, or to the end of the visible range) as normal blocks carrying
+  `recurrence_id`, so every calendar operation, undo and statistic works unchanged. `materialized_until` records how far
+  a rule has been expanded, so a deleted occurrence is never regenerated. "This and following" ends the old rule the day
+  before and starts a new rule from the edited block; past occurrences are never touched.
+- **Templates** store blocks as minutes-from-midnight; applying one is a single undoable batch.
+- **Focus engine**: `tickFocus(now)` runs every second and is idempotent. It derives everything from stored phase start/end
+  times, so it catches up correctly after sleep and closes a phase at its exact planned end, not when the tick happens.
+  Focus state is persisted in settings (`timer.focus`), so a crash or restart resumes the cycle. Break phases are real
+  sessions in the break category.
+- **Budgets** are never stored as progress: `budgetProgress` recomputes from sessions via `computeStats`. Tag budgets
+  count each session once. Break time counts only toward a budget that targets the break category.
+- **Tray**: the webview sends a coarse state (only when the displayed minute changes) via `set_tray_state`; the tray menu
+  emits `tray-action` events back. Close-to-tray is a Rust-side flag set from settings.
+- **Backups**: `db_backup_daily(keep, dir?, force?)` uses SQLite's online backup API into
+  `<dir>/<name>-YYYY-MM-DD.db`, once per day, pruning to the newest `keep`. Runs at startup; "Back up now" forces it.
+
 ## Roadmap notes
 
-Phase 2 entry points:
-
-- **Budgets**: table `budgets` exists. Compute progress with `computeStats` filtered by the target.
-- **Pomodoro/Flowtime**: `sessions.mode` exists. Implement as timer variants in `actions.ts`; the floating timer
-  already shows the active session.
-- **Recurrence/templates**: tables exist. Materialise occurrences as normal blocks with `recurrence_id` so all
-  calendar operations keep working.
-- **Tray timer**: `set_tray_tooltip` exists in `lib.rs`; add menu items that call back into the webview with events.
-- **Heatmaps**: `StatsResult.byDay` already has per-day totals.
-
-Phase 3: Markdown export can reuse `computeStats` and `format.ts`; write files with the `write_text_file` command.
+Phase 3: progression and achievements can derive from `computeStats` and `budgetHistory`. Markdown export can reuse
+`computeStats` and `format.ts`; write files with the `write_text_file` command.

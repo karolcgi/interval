@@ -1,6 +1,6 @@
 [package]
 name = "interval"
-version = "0.1.0"
+version = "0.2.0"
 description = "Interval — local-first time blocking and time tracking"
 edition = "2021"
 rust-version = "1.77"
@@ -19,6 +19,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-notification = "2"
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from "react";
 import type { DbDriver } from "../db/driver";
-import type { Block, Category, DailyNote, Id, Session, Settings, Tag } from "../domain/types";
+import type { Block, Budget, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
+import type { RecurrenceRule } from "../domain/recurrence";
+import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
-export type View = "calendar" | "stats" | "categories" | "settings";
+export type View = "calendar" | "stats" | "budgets" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 
@@ -37,6 +39,9 @@ export interface AppState {
   storageLabel: string;
   categories: Category[];
   tags: Tag[];
+  rules: RecurrenceRule[];
+  templates: DayTemplate[];
+  budgets: Budget[];
   settings: Settings;
   view: View;
   calendarMode: CalendarMode;
@@ -46,8 +51,10 @@ export interface AppState {
   today: { blocks: Block[]; sessions: Session[] };
   running: Session | null;
   paused: PausedTimer | null;
+  focus: FocusState | null; // Pomodoro / Flowtime cycle, persisted as setting timer.focus
   runAccumulatedMs: number; // time from earlier segments of a paused/resumed run
   selection: Selection;
+  renaming: Selection; // item whose name is being edited inline on the timeline
   undoDepth: number;
   redoDepth: number;
   sleepGap: SleepGap | null;
@@ -56,6 +63,7 @@ export interface AppState {
   clipboard: Block[];
   paletteOpen: boolean;
   focusMode: boolean;
+  ritual: { kind: "plan" | "review"; day: number } | null; // morning planning / evening review overlay
   update: { version: string; notes: string | null; progress: number | null } | null;
 }
 
@@ -67,6 +75,9 @@ const initial: AppState = {
   storageLabel: "",
   categories: [],
   tags: [],
+  rules: [],
+  templates: [],
+  budgets: [],
   settings: DEFAULT_SETTINGS,
   view: "calendar",
   calendarMode: "day",
@@ -76,8 +87,10 @@ const initial: AppState = {
   today: { blocks: [], sessions: [] },
   running: null,
   paused: null,
+  focus: null,
   runAccumulatedMs: 0,
   selection: null,
+  renaming: null,
   undoDepth: 0,
   redoDepth: 0,
   sleepGap: null,
@@ -86,6 +99,7 @@ const initial: AppState = {
   clipboard: [],
   paletteOpen: false,
   focusMode: false,
+  ritual: null,
   update: null,
 };
 

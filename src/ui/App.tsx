@@ -5,12 +5,17 @@ import { Sidebar } from "./Sidebar";
 import { CalendarView } from "./CalendarView";
 import { RightPanel } from "./RightPanel";
 import { StatsView } from "./StatsView";
+import { BudgetsView } from "./BudgetsView";
+import { DayLogView } from "./DayLogView";
 import { CategoriesView } from "./CategoriesView";
 import { SettingsView } from "./SettingsView";
 import { FloatingTimer } from "./FloatingTimer";
 import { CommandPalette } from "./CommandPalette";
 import { Toasts, SleepGapBanner } from "./Overlays";
 import { useTheme } from "./useTheme";
+import { FocusOverlay } from "./FocusOverlay";
+import { DailyRitual } from "./DailyRitual";
+import { useFocusEngine, useTray } from "./useFocusEngine";
 
 export function App() {
   const ready = useApp((s) => s.ready);
@@ -22,6 +27,8 @@ export function App() {
   useTheme();
   useShortcuts();
   useHeartbeat();
+  useFocusEngine();
+  useTray();
 
   if (fatal)
     return (
@@ -46,6 +53,8 @@ export function App() {
         )}
         {view === "calendar" && <CalendarView />}
         {view === "stats" && <StatsView />}
+        {view === "budgets" && <BudgetsView />}
+        {view === "log" && <DayLogView />}
         {view === "categories" && <CategoriesView />}
         {view === "settings" && <SettingsView />}
         <FloatingTimer />
@@ -54,6 +63,8 @@ export function App() {
       <SleepGapBanner />
       <CommandPalette />
       <Toasts />
+      <DailyRitual />
+      <FocusOverlay />
     </div>
   );
 }
@@ -90,6 +101,7 @@ function useShortcuts() {
         return void (sel.kind === "block" ? A.deleteBlocks([sel.id]) : A.deleteSession(sel.id));
       }
       if (k === "escape") return A.select(null);
+      if (k === "f2" && sel) return e.preventDefault(), A.startRename(sel);
       if (k === "t") return A.goToday();
       if (k === "arrowleft" || k === "j") return A.stepDate(-1);
       if (k === "arrowright" || k === "k") return A.stepDate(1);
@@ -97,6 +109,7 @@ function useShortcuts() {
       if (k === "w") return A.setCalendarMode("week");
       if (k === "m") return A.setCalendarMode("month");
       if (k === "s") return void A.toggleTimer();
+      if (k === "f") return store.set({ focusMode: !s.focusMode });
       if (k === "[") return void A.updateSettings({ sidebarOpen: !s.settings.sidebarOpen });
       if (k === "]") return void A.updateSettings({ rightPanelOpen: !s.settings.rightPanelOpen });
       if (k === "x" && sel?.kind === "block") return void A.splitBlock(sel.id);

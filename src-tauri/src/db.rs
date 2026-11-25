@@ -126,18 +126,26 @@ pub fn db_backup(state: State<Db>, dest: String) -> Result<(), String> {
     backup_to(conn, Path::new(&dest))
 }
 
-/// Once per calendar day, copy the database to `<data dir>/backups/<name>-YYYY-MM-DD.db`
-/// and keep only the newest `keep` copies.
+/// Once per calendar day, copy the database to `<dir>/<name>-YYYY-MM-DD.db` and keep only the
+/// newest `keep` copies. `dir` defaults to `<data dir>/backups`. `force` re-writes today's copy
+/// (used by "Back up now"). Returns the path written, or None if today's copy already existed.
 #[tauri::command]
-pub fn db_backup_daily(state: State<Db>, keep: usize) -> Result<Option<String>, String> {
+pub fn db_backup_daily(state: State<Db>, keep: usize, dir: Option<String>, force: Option<bool>) -> Result<Option<String>, String> {
     let guard = state.0.lock().map_err(err)?;
     let (conn, path) = guard.as_ref().ok_or("Database is not open")?;
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("interval").to_string();
-    let dir = path.parent().map(|p| p.join("backups")).ok_or("No data folder")?;
+    let dir = match dir.filter(|d| !d.trim().is_empty()) {
+        Some(d) => PathBuf::from(d),
+        None => path.parent().map(|p| p.join("backups")).ok_or("No data folder")?,
+    };
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let dest = dir.join(format!("{stem}-{today}.db"));
     if dest.exists() {
-        return Ok(None);
+        if !force.unwrap_or(false) {
+            return Ok(None);
+        }
+        // SQLite's backup API writes into an existing file; start from a clean one.
+        fs::remove_file(&dest).map_err(err)?;
     }
     backup_to(conn, &dest)?;
     let prefix = format!("{stem}-");

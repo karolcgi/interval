@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { DbDriver } from "./db/driver";
 import { migrate } from "./db/migrations";
 import * as repo from "./db/repo";
@@ -6,7 +5,7 @@ import { generateDemoData } from "./db/fixtures";
 import { TauriDriver } from "./db/tauri-driver";
 import { bootPrefs, isTauri } from "./platform";
 import { store } from "./state/store";
-import { checkSleepOnStartup, refresh, reloadMeta, reportError } from "./state/actions";
+import { backupNow, checkSleepOnStartup, refresh, reloadMeta } from "./state/actions";
 
 /**
  * Real records and demo records live in different databases:
@@ -46,8 +45,8 @@ export async function boot() {
     await checkSleepOnStartup();
     store.set({ ready: true });
     if (db.kind === "tauri") {
-      // Daily rolling backup (keeps the last 14). Failure is reported but never blocks the app.
-      invoke("db_backup_daily", { keep: 14 }).catch(reportError);
+      // Daily rolling backup to the configured folder. Failure is reported but never blocks the app.
+      void backupNow(false);
       // Check for a new version shortly after start, then every 6 hours.
       const { checkForUpdate } = await import("./updater");
       setTimeout(() => void checkForUpdate(), 5_000);

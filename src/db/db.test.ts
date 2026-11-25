@@ -8,6 +8,9 @@ import { exportCsv, exportJson, importCsv, importJson } from "./io";
 import { generateDemoData } from "./fixtures";
 import { store } from "../state/store";
 import * as A from "../state/actions";
+import * as P from "../state/planning";
+import * as F from "../state/focus";
+import { budgetHistory, budgetProgress, periodRange } from "../domain/budgets";
 import { computeStats } from "../domain/stats";
 import { resolveRange, startOfDay, HOUR, MINUTE } from "../domain/time";
 
@@ -117,6 +120,25 @@ describe("calendar actions with undo/redo", () => {
     expect((await repo.listAllSessions(db))[0].blockId).toBe(b.id);
   });
 
+  it("names blocks inline: rename, clear back to the category name, undo", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"), { title: "Houdini VEX" });
+    expect(store.get().blocks[0].title).toBe("Houdini VEX");
+    A.startRename({ kind: "block", id: b.id });
+    expect(store.get().renaming).toEqual({ kind: "block", id: b.id });
+    await A.renameItem({ kind: "block", id: b.id }, "  Pyro sim  ");
+    expect(store.get().renaming).toBeNull();
+    expect(store.get().blocks[0].title).toBe("Pyro sim");
+    await A.renameItem({ kind: "block", id: b.id }, "   ");
+    expect(store.get().blocks[0].title).toBeNull();
+    const depth = store.get().undoDepth;
+    await A.renameItem({ kind: "block", id: b.id }, ""); // unchanged: no history entry
+    expect(store.get().undoDepth).toBe(depth);
+    await A.undo();
+    expect(store.get().blocks[0].title).toBe("Pyro sim");
+    const [row] = await repo.listBlocks(store.get().db!, t(2026, 11, 25), t(2026, 11, 26));
+    expect(row.title).toBe("Pyro sim");
+  });
+
   it("changing a category updates history-derived stats immediately", async () => {
     const s = await A.createSession({ start: t(2026, 11, 25, 6), end: t(2026, 11, 25, 7) }, catId("Studying"));
     await A.updateSession(s.id, { categoryId: catId("Personal art") }, "Change category");
@@ -132,6 +154,122 @@ describe("calendar actions with undo/redo", () => {
     expect((await repo.listAllSessions(db))[0].categoryId).toBe(id);
     const unused = catId("Asset development");
     expect(await A.deleteOrArchiveCategory(unused)).toBe("deleted");
+  });
+});
+
+describe("recurring blocks and templates", () => {
+  let db: SqlJsDriver;
+  beforeEach(async () => {
+    db = await testDb();
+    await boot(db, t(2026, 11, 25, 8)); // Wednesday
+  });
+  const onDay = async (y: number, m: number, d: number) => (await repo.listBlocks(db, t(y, m, d), t(y, m, d + 1)));
+
+  it("materialises weekday occurrences as normal blocks, at the same local time across DST", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 16), end: t(2026, 11, 25, 17) }, catId("Studying"), { title: "Houdini", tagIds: [] });
+    await P.repeatFromBlock(b.id, "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR");
+    const rule = store.get().rules[0];
+    expect(rule.startMinute).toBe(16 * 60);
+    expect(await onDay(2026, 11, 28)).toHaveLength(0); // Saturday
+    const mon = await onDay(2026, 11, 30);
+    expect(mon).toHaveLength(1);
+    expect(mon[0]).toMatchObject({ title: "Houdini", recurrenceId: rule.id, status: "planned" });
+    expect(new Date(mon[0].startAt).getHours()).toBe(16);
+    // navigating further ahead extends the series; a day already generated is never regenerated
+    store.set({ date: t(2027, 3, 31) });
+    await A.refresh();
+    const afterDst = await onDay(2027, 3, 31); // Wednesday after spring-forward
+    expect(new Date(afterDst[0].startAt).getHours()).toBe(16);
+    expect(afterDst[0].endAt - afterDst[0].startAt).toBe(HOUR);
+    await A.refresh();
+    expect(await onDay(2027, 3, 31)).toHaveLength(1);
+  });
+
+  it("a deleted occurrence stays deleted", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 13), end: t(2026, 11, 25, 14) }, catId("Personal time"), { title: "Lunch" });
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    const thu = (await onDay(2026, 11, 26))[0];
+    store.set({ date: t(2026, 11, 26) });
+    await A.refresh();
+    await A.deleteBlocks([thu.id]);
+    await A.refresh();
+    expect(await onDay(2026, 11, 26)).toHaveLength(0);
+    expect(await onDay(2026, 11, 27)).toHaveLength(1);
+  });
+
+  it("apply to following splits the series; earlier occurrences are untouched", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    store.set({ date: t(2026, 11, 27) });
+    await A.refresh();
+    const fri = store.get().blocks[0];
+    await A.updateBlock(fri.id, { startAt: t(2026, 11, 27, 10), endAt: t(2026, 11, 27, 12) });
+    const moved = (await onDay(2026, 11, 27))[0];
+    expect(P.differsFromRule(moved, P.ruleOf(moved)!)).toBe(true);
+    await P.repeatFromBlock(fri.id, null);
+    const [oldRule, newRule] = store.get().rules;
+    expect(oldRule.endsOn).toBe("2026-11-26");
+    expect(newRule.startsOn).toBe("2026-11-27");
+    expect(new Date((await onDay(2026, 11, 26))[0].startAt).getHours()).toBe(9);
+    const sat = await onDay(2026, 11, 28);
+    expect(sat).toHaveLength(1);
+    expect(sat[0].recurrenceId).toBe(newRule.id);
+    expect(new Date(sat[0].startAt).getHours()).toBe(10);
+    expect(sat[0].endAt - sat[0].startAt).toBe(2 * HOUR);
+  });
+
+  it("stop repeating keeps recorded and past occurrences, removes later planned ones", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    await A.completeBlockManually(b.id);
+    store.set({ date: t(2026, 11, 27) });
+    await A.refresh();
+    const fri = store.get().blocks[0];
+    await P.stopRepeating(fri.id);
+    expect(await onDay(2026, 11, 25)).toHaveLength(1);
+    expect(await onDay(2026, 11, 27)).toHaveLength(1);
+    expect(await onDay(2026, 11, 28)).toHaveLength(0);
+    store.set({ date: t(2026, 12, 20) });
+    await A.refresh();
+    expect(await onDay(2026, 12, 20)).toHaveLength(0);
+    expect(await repo.listAllSessions(db)).toHaveLength(1);
+  });
+
+  it("delete this and following", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    const thu = (await onDay(2026, 11, 26))[0];
+    await P.deleteFollowing(thu.id);
+    expect(await onDay(2026, 11, 25)).toHaveLength(1);
+    expect(await onDay(2026, 11, 26)).toHaveLength(0);
+    expect(await onDay(2026, 12, 3)).toHaveLength(0);
+  });
+
+  it("saves a day as a template and applies it to another day (undoable)", async () => {
+    await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 12) }, catId("Freelance work"), { title: "Client" });
+    await A.createBlock({ start: t(2026, 11, 25, 13), end: t(2026, 11, 25, 13, 45) }, catId("Personal time"), { title: "Lunch" });
+    const tpl = await P.saveDayAsTemplate(t(2026, 11, 25), "Freelance day");
+    expect(tpl!.blocks.map((b) => [b.startMinute, b.durationMinutes, b.title])).toEqual([[540, 180, "Client"], [780, 45, "Lunch"]]);
+    await P.applyTemplate(tpl!.id, t(2027, 3, 29)); // the Monday after spring-forward
+    const applied = await onDay(2027, 3, 29);
+    expect(applied.map((b) => [new Date(b.startAt).getHours(), (b.endAt - b.startAt) / MINUTE])).toEqual([[9, 180], [13, 45]]);
+    await A.undo();
+    expect(await onDay(2027, 3, 29)).toHaveLength(0);
+    await P.renameTemplate(tpl!.id, "Client day");
+    expect(store.get().templates[0].name).toBe("Client day");
+    await P.deleteTemplate(tpl!.id);
+    expect(store.get().templates).toHaveLength(0);
+  });
+
+  it("rules, templates and budgets survive a JSON round trip", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=WEEKLY;BYDAY=WE");
+    await P.saveDayAsTemplate(t(2026, 11, 25), "Study day");
+    const bundle = await exportJson(db);
+    const fresh = await testDb(null, false);
+    await importJson(fresh, JSON.parse(JSON.stringify(bundle)));
+    expect(await repo.listRules(fresh)).toHaveLength(1);
+    expect((await repo.listTemplates(fresh))[0].blocks).toHaveLength(1);
   });
 });
 
@@ -214,6 +352,142 @@ describe("timer", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("Pomodoro and Flowtime", () => {
+  const withClock = async (fn: (db: SqlJsDriver) => Promise<void>) => {
+    vi.useFakeTimers();
+    try {
+      const db = await testDb();
+      vi.setSystemTime(t(2026, 11, 25, 9));
+      await boot(db);
+      store.set({ settings: { ...store.get().settings, sounds: false, notifications: false } });
+      await fn(db);
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const all = async (db: SqlJsDriver) => (await repo.listAllSessions(db)).sort((a, b) => a.startAt - b.startAt);
+
+  it("pomodoro: 25 min focus, 5 min break recorded as a break, then waits for the next round", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying"), title: "VEX" }, { focus: 25, brk: 5, long: 15, every: 4 });
+      expect(store.get().running?.mode).toBe("pomodoro");
+      vi.setSystemTime(t(2026, 11, 25, 9, 25) + 30_000);
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("break");
+      expect(store.get().running?.categoryId).toBe(catId("Breaks"));
+      vi.setSystemTime(t(2026, 11, 25, 9, 31));
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("ready");
+      expect(store.get().running).toBeNull();
+      const [focus, brk] = await all(db);
+      expect([focus.startAt, focus.endAt]).toEqual([t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)]); // exact, not tick time
+      expect([brk.startAt, brk.endAt]).toEqual([t(2026, 11, 25, 9, 25), t(2026, 11, 25, 9, 30)]);
+      expect(focus.title).toBe("VEX");
+      await F.nextRound();
+      expect(store.get().running).toMatchObject({ categoryId: catId("Studying"), title: "VEX", mode: "pomodoro" });
+      expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
+    }));
+
+  it("pomodoro catches up after sleep and gives the long break after every Nth round", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 1 });
+      vi.setSystemTime(t(2026, 11, 25, 11)); // slept through focus end AND break end
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("ready");
+      const [focus, brk] = await all(db);
+      expect(focus.endAt).toBe(t(2026, 11, 25, 9, 25));
+      expect(brk.endAt! - brk.startAt).toBe(15 * MINUTE);
+    }));
+
+  it("pause keeps the remaining time of the round", () =>
+    withClock(async () => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 4 });
+      vi.setSystemTime(t(2026, 11, 25, 9, 10));
+      await A.pauseTimer();
+      expect(store.get().focus?.pausedRemaining).toBe(15 * MINUTE);
+      vi.setSystemTime(t(2026, 11, 25, 10));
+      await F.tickFocus(); // paused: nothing happens
+      expect(store.get().focus?.phase).toBe("focus");
+      await A.resumeTimer();
+      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 10, 15));
+      expect(store.get().running?.mode).toBe("pomodoro");
+    }));
+
+  it("flowtime: stop suggests a proportional break; accepting records it and then ends", () =>
+    withClock(async (db) => {
+      await F.startFlowtime({ categoryId: catId("Personal art") });
+      vi.setSystemTime(t(2026, 11, 25, 10, 2));
+      await A.stopTimer();
+      expect(store.get().focus).toMatchObject({ phase: "suggest", suggestedBreakMin: 10 });
+      await F.startSuggestedBreak();
+      expect(store.get().running?.categoryId).toBe(catId("Breaks"));
+      vi.setSystemTime(t(2026, 11, 25, 10, 13));
+      await F.tickFocus();
+      expect(store.get().focus).toBeNull();
+      expect(store.get().running).toBeNull();
+      const [work, brk] = await all(db);
+      expect(work.endAt! - work.startAt).toBe(62 * MINUTE);
+      expect(work.mode).toBe("flowtime");
+      expect(brk.endAt! - brk.startAt).toBe(10 * MINUTE);
+    }));
+
+  it("starting an ordinary timer ends a focus cycle", () =>
+    withClock(async () => {
+      await F.startPomodoro({ categoryId: catId("Studying") });
+      await A.startTimer({ categoryId: catId("Freelance work") });
+      expect(store.get().focus).toBeNull();
+      expect(store.get().running?.mode).toBe("stopwatch");
+    }));
+});
+
+describe("time budgets", () => {
+  it("weekly minimum for a category and tag, with planned time ahead and history", async () => {
+    vi.useFakeTimers();
+    try {
+      const db = await testDb();
+      vi.setSystemTime(t(2026, 11, 25, 12)); // Wednesday
+      await boot(db);
+      const houdini = await A.ensureTag("Houdini");
+      const studying = catId("Studying");
+      // last week: 3h; this week: 2h recorded (one Houdini), 2h planned later this week
+      await A.createSession({ start: t(2026, 11, 17, 9), end: t(2026, 11, 17, 12) }, studying);
+      await A.createSession({ start: t(2026, 11, 24, 9), end: t(2026, 11, 24, 10) }, studying, { tagIds: [houdini.id] });
+      await A.createSession({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, studying);
+      await A.createBlock({ start: t(2026, 11, 27, 9), end: t(2026, 11, 27, 11) }, studying);
+      await A.createBlock({ start: t(2026, 11, 28, 9), end: t(2026, 11, 28, 10) }, studying, { status: "skipped" });
+      await A.saveBudget({ id: "b1", targetType: "category", targetId: studying, period: "week", minMinutes: 5 * 60, maxMinutes: null, archivedAt: null, createdAt: 0 });
+      await A.saveBudget({ id: "b2", targetType: "tag", targetId: houdini.id, period: "week", minMinutes: null, maxMinutes: 30, archivedAt: null, createdAt: 0 });
+      const [b1, b2] = store.get().budgets;
+      const sessions = await repo.listAllSessions(db);
+      const blocks = await repo.listAllBlocks(db);
+      const cats = store.get().categories;
+      const p1 = budgetProgress(b1, sessions, blocks, cats, Date.now(), 1);
+      expect(p1.doneMs).toBe(2 * HOUR);
+      expect(p1.plannedAheadMs).toBe(2 * HOUR); // skipped block not counted
+      expect(p1.remainingMs).toBe(3 * HOUR);
+      expect(p1.status).toBe("behind"); // 2 + 2 < 5
+      const p2 = budgetProgress(b2, sessions, blocks, cats, Date.now(), 1);
+      expect(p2.doneMs).toBe(HOUR);
+      expect(p2.status).toBe("over");
+      const hist = budgetHistory(b1, sessions, blocks, cats, Date.now(), 1, 2);
+      expect(hist.map((h) => h.doneMs)).toEqual([0, 3 * HOUR]);
+      expect(hist.map((h) => h.ok)).toEqual([false, false]);
+      await expect(A.saveBudget({ ...b1, minMinutes: null, maxMinutes: null })).rejects.toThrow();
+      await A.deleteBudget("b2");
+      expect(store.get().budgets).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("period ranges are local and DST-safe", () => {
+    const w = periodRange("week", t(2026, 3, 29, 12), 1);
+    expect(w.end - w.start).toBe(7 * 24 * HOUR - HOUR); // spring-forward week is 167h
+    expect(new Date(periodRange("month", t(2026, 2, 10), 1, -1).start).getMonth()).toBe(0);
+    expect(new Date(periodRange("year", t(2026, 6, 1), 1).start).getFullYear()).toBe(2026);
   });
 });
 

@@ -2,7 +2,8 @@
 // Mutation helpers return Statement[] so callers can compose atomic batches.
 
 import type { DbDriver, Statement } from "./driver";
-import type { Block, BlockStatus, Category, DailyNote, Id, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, BlockStatus, Budget, Category, DailyNote, DayTemplate, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
+import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 
 export function newId(): Id {
@@ -260,21 +261,163 @@ export async function getSetting<T>(db: DbDriver, key: string): Promise<T | null
 
 // --------------------------------------------------------------- daily notes
 
+function toDailyNote(x: Row): DailyNote {
+  return {
+    date: String(x.date),
+    intention: str(x.intention),
+    reflection: str(x.reflection),
+    plannedAt: num(x.planned_at),
+    reviewedAt: num(x.reviewed_at),
+    updatedAt: Number(x.updated_at),
+  };
+}
+
 export async function getDailyNote(db: DbDriver, date: string): Promise<DailyNote | null> {
   const r = await db.select<Row>("SELECT * FROM daily_notes WHERE date = ?", [date]);
-  if (!r[0]) return null;
-  return { date, intention: str(r[0].intention), reflection: str(r[0].reflection), updatedAt: Number(r[0].updated_at) };
+  return r[0] ? toDailyNote(r[0]) : null;
 }
 
 export function upsertDailyNoteStmt(n: DailyNote): Statement {
   return {
-    sql: `INSERT INTO daily_notes (date, intention, reflection, updated_at) VALUES (?, ?, ?, ?)
-          ON CONFLICT(date) DO UPDATE SET intention=excluded.intention, reflection=excluded.reflection, updated_at=excluded.updated_at`,
-    params: [n.date, n.intention, n.reflection, n.updatedAt],
+    sql: `INSERT INTO daily_notes (date, intention, reflection, planned_at, reviewed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(date) DO UPDATE SET intention=excluded.intention, reflection=excluded.reflection,
+            planned_at=excluded.planned_at, reviewed_at=excluded.reviewed_at, updated_at=excluded.updated_at`,
+    params: [n.date, n.intention, n.reflection, n.plannedAt ?? null, n.reviewedAt ?? null, n.updatedAt],
   };
 }
 
 export async function listDailyNotes(db: DbDriver): Promise<DailyNote[]> {
-  const r = await db.select<Row>("SELECT * FROM daily_notes ORDER BY date");
-  return r.map((x) => ({ date: String(x.date), intention: str(x.intention), reflection: str(x.reflection), updatedAt: Number(x.updated_at) }));
+  return (await db.select<Row>("SELECT * FROM daily_notes ORDER BY date")).map(toDailyNote);
+}
+
+// ---------------------------------------------------------------- recurrence
+
+function parseIds(v: unknown): Id[] {
+  try {
+    const a = JSON.parse(String(v ?? "[]"));
+    return Array.isArray(a) ? a.map(String).sort() : [];
+  } catch {
+    return [];
+  }
+}
+
+function toRule(r: Row): RecurrenceRule {
+  return {
+    id: String(r.id),
+    rrule: String(r.rrule),
+    startMinute: Number(r.start_minute),
+    durationMinutes: Number(r.duration_minutes),
+    categoryId: String(r.category_id),
+    title: str(r.title),
+    tagIds: parseIds(r.tag_ids),
+    startsOn: String(r.starts_on),
+    endsOn: str(r.ends_on),
+    materializedUntil: str(r.materialized_until),
+    createdAt: Number(r.created_at),
+  };
+}
+
+export async function listRules(db: DbDriver): Promise<RecurrenceRule[]> {
+  return (await db.select<Row>("SELECT * FROM recurrence_rules ORDER BY created_at")).map(toRule);
+}
+
+export function upsertRuleStmt(r: RecurrenceRule): Statement {
+  return {
+    sql: `INSERT INTO recurrence_rules (id, rrule, start_minute, duration_minutes, category_id, title, tag_ids, starts_on, ends_on, materialized_until, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET rrule=excluded.rrule, start_minute=excluded.start_minute, duration_minutes=excluded.duration_minutes,
+            category_id=excluded.category_id, title=excluded.title, tag_ids=excluded.tag_ids, starts_on=excluded.starts_on,
+            ends_on=excluded.ends_on, materialized_until=excluded.materialized_until`,
+    params: [r.id, r.rrule, r.startMinute, r.durationMinutes, r.categoryId, r.title, JSON.stringify(r.tagIds), r.startsOn, r.endsOn, r.materializedUntil, r.createdAt],
+  };
+}
+
+/** Planned occurrences of a rule starting at or after `from` that have no recorded time. */
+export async function futurePlannedOccurrences(db: DbDriver, ruleId: Id, from: number): Promise<Block[]> {
+  const rows = await db.select<Row>(
+    `${BLOCK_SELECT} WHERE b.recurrence_id = ? AND b.start_at >= ? AND b.status = 'planned'
+       AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.block_id = b.id) ORDER BY b.start_at`,
+    [ruleId, from],
+  );
+  return rows.map(toBlock);
+}
+
+// ----------------------------------------------------------------- templates
+
+export async function listTemplates(db: DbDriver): Promise<DayTemplate[]> {
+  const ts = await db.select<Row>("SELECT * FROM templates ORDER BY sort_order, created_at");
+  const bs = await db.select<Row>("SELECT * FROM template_blocks ORDER BY start_minute");
+  return ts.map((t) => ({
+    id: String(t.id),
+    name: String(t.name),
+    sortOrder: Number(t.sort_order ?? 0),
+    createdAt: Number(t.created_at),
+    blocks: bs
+      .filter((b) => b.template_id === t.id)
+      .map(
+        (b): TemplateBlock => ({
+          id: String(b.id),
+          startMinute: Number(b.start_minute),
+          durationMinutes: Number(b.duration_minutes),
+          categoryId: String(b.category_id),
+          title: str(b.title),
+          tagIds: parseIds(b.tag_ids),
+        }),
+      ),
+  }));
+}
+
+export function upsertTemplateStmts(t: DayTemplate): Statement[] {
+  return [
+    {
+      sql: `INSERT INTO templates (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name, sort_order=excluded.sort_order`,
+      params: [t.id, t.name, t.sortOrder, t.createdAt],
+    },
+    { sql: "DELETE FROM template_blocks WHERE template_id = ?", params: [t.id] },
+    ...t.blocks.map((b) => ({
+      sql: "INSERT INTO template_blocks (id, template_id, start_minute, duration_minutes, category_id, title, tag_ids) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      params: [b.id, t.id, b.startMinute, b.durationMinutes, b.categoryId, b.title, JSON.stringify(b.tagIds)],
+    })),
+  ];
+}
+
+export function deleteTemplateStmts(id: Id): Statement[] {
+  return [
+    { sql: "DELETE FROM template_blocks WHERE template_id = ?", params: [id] },
+    { sql: "DELETE FROM templates WHERE id = ?", params: [id] },
+  ];
+}
+
+// ------------------------------------------------------------------- budgets
+
+function toBudget(r: Row): Budget {
+  return {
+    id: String(r.id),
+    targetType: r.target_type === "tag" ? "tag" : "category",
+    targetId: String(r.target_id),
+    period: String(r.period) as Budget["period"],
+    minMinutes: num(r.min_minutes),
+    maxMinutes: num(r.max_minutes),
+    archivedAt: num(r.archived_at),
+    createdAt: Number(r.created_at),
+  };
+}
+
+export async function listBudgets(db: DbDriver): Promise<Budget[]> {
+  return (await db.select<Row>("SELECT * FROM budgets ORDER BY created_at")).map(toBudget);
+}
+
+export function upsertBudgetStmt(b: Budget): Statement {
+  return {
+    sql: `INSERT INTO budgets (id, target_type, target_id, period, min_minutes, max_minutes, archived_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET target_type=excluded.target_type, target_id=excluded.target_id, period=excluded.period,
+            min_minutes=excluded.min_minutes, max_minutes=excluded.max_minutes, archived_at=excluded.archived_at`,
+    params: [b.id, b.targetType, b.targetId, b.period, b.minMinutes, b.maxMinutes, b.archivedAt, b.createdAt],
+  };
+}
+
+export function deleteBudgetStmt(id: Id): Statement {
+  return { sql: "DELETE FROM budgets WHERE id = ?", params: [id] };
 }

@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { CalendarDays, ChartNoAxesColumn, Play, Settings2, Shapes, Sun, Square } from "lucide-react";
+import { CalendarDays, ChartNoAxesColumn, Gauge, NotebookText, Play, Settings2, Shapes, Sun, Square } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
+import { StartMenuButton } from "./StartMenu";
 import { MiniCalendar } from "./MiniCalendar";
 import { computeStats } from "../domain/stats";
 import { addDays, isSameDay, startOfDay } from "../domain/time";
@@ -44,6 +45,8 @@ export function Sidebar() {
         <NavItem icon={<Sun size={15} />} label="Today" active={isTodayView} onClick={() => { A.setCalendarMode("day"); A.goToday(); }} hint="T" />
         <NavItem icon={<CalendarDays size={15} />} label="Calendar" active={view === "calendar" && !isTodayView} onClick={() => A.setCalendarMode(mode === "day" ? "week" : mode)} hint="W" />
         <NavItem icon={<ChartNoAxesColumn size={15} />} label="Statistics" active={view === "stats"} onClick={() => A.setView("stats")} />
+        <NavItem icon={<Gauge size={15} />} label="Time budgets" active={view === "budgets"} onClick={() => A.setView("budgets")} />
+        <NavItem icon={<NotebookText size={15} />} label="Day log" active={view === "log"} onClick={() => A.setView("log")} />
         <NavItem icon={<Shapes size={15} />} label="Categories & tags" active={view === "categories"} onClick={() => A.setView("categories")} />
       </nav>
 
@@ -88,9 +91,12 @@ export function Sidebar() {
             <Square size={13} /> Stop timer
           </button>
         ) : (
-          <button className="btn btn-ghost side-timer" onClick={() => void A.startTimer({})} title="Start an unscheduled session (S)">
-            <Play size={13} /> Start timer
-          </button>
+          <div className="side-timer-row">
+            <button className="btn btn-ghost side-timer" onClick={() => void A.startTimer({})} title="Start an unscheduled session (S)">
+              <Play size={13} /> Start timer
+            </button>
+            <StartMenuButton target={{}} />
+          </div>
         )}
         <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => A.setView("settings")}>
           <Settings2 size={15} />

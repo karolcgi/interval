@@ -129,6 +129,19 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       )`,
     ],
   },
+  {
+    version: 2,
+    name: "phase 2: recurrence bookkeeping, review timestamps",
+    up: [
+      // Last local day for which a rule's occurrences were generated. Occurrences are only ever
+      // generated forward from here, so a deleted occurrence never comes back.
+      `ALTER TABLE recurrence_rules ADD COLUMN materialized_until TEXT`,
+      `ALTER TABLE templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE daily_notes ADD COLUMN planned_at INTEGER`,
+      `ALTER TABLE daily_notes ADD COLUMN reviewed_at INTEGER`,
+      `CREATE INDEX idx_blocks_recurrence ON blocks(recurrence_id)`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

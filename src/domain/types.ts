@@ -66,7 +66,41 @@ export interface DailyNote {
   date: string; // YYYY-MM-DD in local calendar
   intention: string | null;
   reflection: string | null;
+  plannedAt: number | null; // morning planning finished
+  reviewedAt: number | null; // evening review finished
   updatedAt: number;
+}
+
+export type BudgetPeriod = "day" | "week" | "month" | "year" | "lifetime";
+
+/** A time budget: a minimum target and/or a maximum limit for a category or tag over a period. */
+export interface Budget {
+  id: Id;
+  targetType: "category" | "tag";
+  targetId: Id;
+  period: BudgetPeriod;
+  minMinutes: number | null;
+  maxMinutes: number | null;
+  archivedAt: number | null;
+  createdAt: number;
+}
+
+export interface TemplateBlock {
+  id: Id;
+  startMinute: number; // local minute of day
+  durationMinutes: number;
+  categoryId: Id;
+  title: string | null;
+  tagIds: Id[];
+}
+
+/** A reusable day plan ("Freelance day"). Applying it creates normal planned blocks. */
+export interface DayTemplate {
+  id: Id;
+  name: string;
+  sortOrder: number;
+  blocks: TemplateBlock[];
+  createdAt: number;
 }
 
 export type ThemePref = "dark" | "light" | "system";
@@ -86,6 +120,22 @@ export interface Settings {
   sidebarOpen: boolean;
   defaultBlockMinutes: number;
   timeFormat: "24h" | "12h";
+  // Focus (Phase 2)
+  pomodoroFocus: number; // minutes
+  pomodoroBreak: number;
+  pomodoroLongBreak: number;
+  pomodoroLongEvery: number;
+  breakCategoryId: Id | null; // null = first break category
+  breakReminderMinutes: number; // stopwatch: remind to take a break after this long; 0 = off
+  notifications: boolean;
+  sounds: boolean;
+  closeToTray: boolean;
+  // Daily ritual (Phase 2)
+  workdayHours: number; // used by morning planning to show unallocated time
+  reviewPrompts: boolean; // show morning/evening prompts in the day panel
+  // Backups (Phase 2)
+  backupDir: string | null; // null = <data folder>/backups
+  backupKeepDays: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -102,6 +152,19 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarOpen: true,
   defaultBlockMinutes: 60,
   timeFormat: "24h",
+  pomodoroFocus: 25,
+  pomodoroBreak: 5,
+  pomodoroLongBreak: 15,
+  pomodoroLongEvery: 4,
+  breakCategoryId: null,
+  breakReminderMinutes: 90,
+  notifications: true,
+  sounds: true,
+  closeToTray: false,
+  workdayHours: 8,
+  reviewPrompts: true,
+  backupDir: null,
+  backupKeepDays: 30,
 };
 
 /** A half-open interval [start, end) in epoch ms. */

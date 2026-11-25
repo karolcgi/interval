@@ -8,6 +8,7 @@ import { computeStats, resolveSessions, type Bucket, type StatsFilter } from "..
 import { DAY, dayKey, previousRange, RANGE_LABELS, resolveRange, type RangePreset } from "../domain/time";
 import { fmt, fmtDuration, fmtHours, fmtTime } from "../domain/format";
 import { catVars, CatDot, Segmented, useElementWidth } from "./bits";
+import { Cumulative, Heatmap, PlanVsActual } from "./StatsCharts";
 
 const PRESETS: RangePreset[] = ["today", "yesterday", "this_week", "last_week", "this_month", "last_month", "this_quarter", "this_year", "last_year", "all_time", "custom"];
 
@@ -151,6 +152,30 @@ export function StatsView() {
               </div>
               <HourChart values={stats.byHour} />
               <WeekdayChart values={stats.byWeekday} weekStartsOn={weekStartsOn} />
+            </div>
+          </div>
+
+          <div className="stats-grid">
+            <div className="card chart-card wide">
+              <div className="card-head">
+                <h3>Activity · last 12 months</h3>
+                <span className="muted small">follows the filters · click a day to open it</span>
+              </div>
+              <Heatmap filter={filter} color={catFilter.length === 1 ? catById.get(catFilter[0])?.color ?? "var(--accent)" : "var(--accent)"} />
+            </div>
+            <div className="card">
+              <div className="card-head">
+                <h3>Planned vs recorded</h3>
+                <span className="muted small">per {bucket}</span>
+              </div>
+              <PlanVsActual stats={stats} bucket={bucket} />
+            </div>
+            <div className="card">
+              <div className="card-head">
+                <h3>Cumulative hours</h3>
+                <span className="muted small">by {groupBy}</span>
+              </div>
+              {data && <Cumulative stats={stats} sessions={data.sessions} range={range} filter={filter} groupBy={groupBy} catById={catById} tagById={tagById} />}
             </div>
           </div>
 

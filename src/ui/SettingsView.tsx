@@ -29,6 +29,7 @@ export function SettingsView() {
   const s = useApp((x) => x.settings);
   const storage = useApp((x) => x.storageLabel);
   const demo = useApp((x) => x.demo);
+  const categories = useApp((x) => x.categories);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<typeof s>) => void A.updateSettings(patch).catch(A.reportError);
 
@@ -124,9 +125,58 @@ export function SettingsView() {
         </Row>
       </div>
 
+      <h2 className="section-title">Focus</h2>
+      <div className="settings-block">
+        <Row label="Pomodoro" hint="Your default preset. 25/5, 50/10 and 90/15 are always offered next to Start.">
+          <NumField label="Focus minutes" value={s.pomodoroFocus} min={5} max={180} onChange={(pomodoroFocus) => set({ pomodoroFocus })} suffix="focus" />
+          <NumField label="Break minutes" value={s.pomodoroBreak} min={1} max={60} onChange={(pomodoroBreak) => set({ pomodoroBreak })} suffix="break" />
+        </Row>
+        <Row label="Long break" hint="After every Nth focus round">
+          <NumField label="Long break minutes" value={s.pomodoroLongBreak} min={1} max={90} onChange={(pomodoroLongBreak) => set({ pomodoroLongBreak })} suffix="min" />
+          <span className="muted">every</span>
+          <NumField label="Rounds before a long break" value={s.pomodoroLongEvery} min={1} max={12} onChange={(pomodoroLongEvery) => set({ pomodoroLongEvery })} suffix="rounds" />
+        </Row>
+        <Row label="Breaks are recorded as" hint="Pomodoro and Flowtime breaks are logged to this category and reported separately">
+          <select className="select sm" value={s.breakCategoryId ?? ""} onChange={(e) => set({ breakCategoryId: e.target.value || null })} aria-label="Break category">
+            <option value="">First break category</option>
+            {categories
+              .filter((c) => !c.archivedAt)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+          </select>
+        </Row>
+        <Row label="Break reminder" hint="Stopwatch only. One gentle nudge after a long unbroken stretch. 0 turns it off.">
+          <NumField label="Break reminder minutes" value={s.breakReminderMinutes} min={0} max={480} onChange={(breakReminderMinutes) => set({ breakReminderMinutes })} suffix="min" />
+        </Row>
+        <Row label="Notifications" hint="Windows notifications when a round or break ends while Interval is in the background">
+          <input type="checkbox" checked={s.notifications} onChange={(e) => set({ notifications: e.target.checked })} aria-label="Notifications" />
+        </Row>
+        <Row label="Sounds" hint="A soft chime at the end of a round or break">
+          <input type="checkbox" checked={s.sounds} onChange={(e) => set({ sounds: e.target.checked })} aria-label="Sounds" />
+        </Row>
+        {isTauri() && (
+          <Row label="Close to tray" hint="Closing the window keeps Interval in the system tray, where the timer can be started, paused and stopped">
+            <input type="checkbox" checked={s.closeToTray} onChange={(e) => set({ closeToTray: e.target.checked })} aria-label="Close to tray" />
+          </Row>
+        )}
+      </div>
+
+      <h2 className="section-title">Daily ritual</h2>
+      <div className="settings-block">
+        <Row label="Suggest planning and review" hint="A quiet prompt in the day panel: plan in the morning, review in the evening. Always optional.">
+          <input type="checkbox" checked={s.reviewPrompts} onChange={(e) => set({ reviewPrompts: e.target.checked })} aria-label="Suggest planning and review" />
+        </Row>
+        <Row label="Working day" hint="Morning planning shows how much of it is still unallocated">
+          <NumField label="Working day hours" value={s.workdayHours} min={1} max={16} onChange={(workdayHours) => set({ workdayHours })} suffix="hours" />
+        </Row>
+      </div>
+
       <h2 className="section-title">Data</h2>
       <div className="settings-block">
-        <Row label="Database" hint={isTauri() ? "Local SQLite file. A rolling daily backup (last 14 days) is written to a backups folder beside it." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>
+        <Row label="Database" hint={isTauri() ? "Local SQLite file." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>
           <code className="path">{storage}</code>
           {isTauri() && (
             <button className="icon-btn" onClick={() => void revealDataFolder(storage.replace(/^.*?:/, ""))} title="Show in Explorer">
@@ -144,6 +194,27 @@ export function SettingsView() {
                 Use default
               </button>
             )}
+          </Row>
+        )}
+        {isTauri() && (
+          <Row label="Automatic backups" hint={`A copy of the database once a day, the newest ${s.backupKeepDays} kept. ${s.backupDir ? "Custom folder." : "Default: a backups folder beside the database."} Point it at a synced folder (Dropbox, OneDrive) for an off-machine copy.`}>
+            <code className="path">{s.backupDir ?? "backups/ beside the database"}</code>
+            <button className="btn btn-outline sm" onClick={() => void pickDirectory().then((backupDir) => backupDir && set({ backupDir }))}>
+              Change…
+            </button>
+            {s.backupDir && (
+              <button className="btn btn-ghost sm" onClick={() => set({ backupDir: null })}>
+                Use default
+              </button>
+            )}
+          </Row>
+        )}
+        {isTauri() && (
+          <Row label="Keep backups" hint="Older copies in that folder are deleted">
+            <NumField label="Backups to keep" value={s.backupKeepDays} min={1} max={365} onChange={(backupKeepDays) => set({ backupKeepDays })} suffix="days" />
+            <button className="btn btn-outline sm" onClick={() => void A.backupNow(true)}>
+              Back up now
+            </button>
           </Row>
         )}
         <Row label="Export" hint="JSON is a complete backup. CSV is one row per planned or recorded entry.">
@@ -186,7 +257,9 @@ export function SettingsView() {
           ["D  W  M", "Day / week / month view"],
           ["S  or Ctrl E", "Start / stop timer (selected block, or unscheduled)"],
           ["1 – 9", "Pick category (in picker) or recategorise selection"],
+          ["F", "Focus mode (full-window timer)"],
           ["C", "Confirm selected block as done"],
+          ["F2 / double-click", "Rename selected block"],
           ["X", "Split selected block"],
           ["Ctrl D", "Duplicate selected block"],
           ["Ctrl C / Ctrl V", "Copy block / paste onto focused day"],
@@ -210,6 +283,21 @@ export function SettingsView() {
 function confirmInline(msg: string): boolean {
   // window.confirm is synchronous and native on Windows (WebView2), acceptable for rare destructive settings changes.
   return window.confirm(msg);
+}
+
+function NumField(p: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; suffix?: string }) {
+  const [v, setV] = useState(String(p.value));
+  const commit = () => {
+    const n = Math.round(Number(v));
+    if (Number.isFinite(n) && n >= p.min && n <= p.max) p.onChange(n);
+    else setV(String(p.value));
+  };
+  return (
+    <label className="num-field">
+      <input className="field num" type="number" inputMode="numeric" min={p.min} max={p.max} value={v} aria-label={p.label} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+      {p.suffix && <span className="muted small">{p.suffix}</span>}
+    </label>
+  );
 }
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

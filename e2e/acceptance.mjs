@@ -63,18 +63,22 @@ try {
   await expectText(page.locator(".cal-eyebrow"), /Today/, "today label");
   ok("App opens on today's timeline");
 
-  // 2-3. Drag 09:00 -> 11:30 and pick Freelance work with its shortcut key
+  // 2-3. Drag 09:00 -> 11:30, name it, and pick Freelance work with its shortcut key
   await dragOnPlan(9 * 60, 11 * 60 + 30);
   await page.locator(".picker").waitFor();
+  await page.keyboard.type("Client cut");
+  await page.keyboard.press("Enter"); // name -> category
   await page.keyboard.press("1");
-  await expectText(page.locator(".block"), /Freelance work.*|09:00 – 11:30/, "block created");
+  await expectText(page.locator(".block"), /Client cut/, "named block created");
   const b1 = await page.locator(".block").first().getAttribute("aria-label");
-  if (!/09:00 – 11:30/.test(b1)) await fail(`first block has wrong time: ${b1}`);
-  ok("Drag 09:00–11:30 creates a block; key 1 assigns Freelance work");
+  if (!/^Client cut, 09:00 – 11:30/.test(b1)) await fail(`first block has wrong name/time: ${b1}`);
+  await expectText(page.locator(".block").first().locator(".block-meta"), /Freelance work/, "category shown under the name");
+  ok("Drag 09:00–11:30, name “Client cut”, key 1 assigns Freelance work");
 
-  // 4. Studying block tagged Houdini (picker: type to filter, Enter)
+  // 4. Studying block tagged Houdini (no name: Enter skips to category, type to filter, Enter)
   await dragOnPlan(15 * 60, 16 * 60 + 30);
-  await page.locator(".picker-input").fill("stud");
+  await page.keyboard.press("Enter");
+  await page.getByLabel("Filter categories").fill("stud");
   await page.keyboard.press("Enter");
   await page.getByLabel("Add tag").first().fill("Houdini");
   await page.keyboard.press("Enter");
@@ -98,6 +102,33 @@ try {
   await expectText(page.locator(".dist li"), /Studying.*1h 10m.*1h 30m/, "studying actual vs planned");
   ok("Right panel shows 1h 10m recorded vs 4h 00m planned; Studying 1h 10m / 1h 30m");
   await page.screenshot({ path: new URL("today.png", OUT).pathname });
+
+  // Phase 2: rename inline (double-click) and with F2, colour follows the category
+  const first = page.locator(".lane-plan .block").first();
+  await first.locator(".block-title").dblclick();
+  await page.locator(".inline-name").fill("Client cut v2");
+  await page.keyboard.press("Enter");
+  await expectText(page.locator(".lane-plan .block"), /Client cut v2/, "inline rename via double-click");
+  await page.keyboard.press("Escape");
+  await first.click();
+  await page.keyboard.press("F2");
+  await page.locator(".inline-name").fill("Final cut");
+  await page.keyboard.press("Enter");
+  await expectText(page.locator(".lane-plan .block"), /Final cut/, "inline rename via F2");
+  await page.keyboard.press("Escape");
+  await page.locator(".inline-name").waitFor({ state: "detached" });
+  ok("Rename a block inline with double-click and with F2");
+
+  const colourOf = () => first.evaluate((el) => el.style.getPropertyValue("--c"));
+  const before = await colourOf();
+  await page.getByRole("button", { name: "Categories" }).click();
+  const row = page.locator(`.cat-grid[data-name="Freelance work"]`);
+  await row.getByLabel("Change colour").click();
+  await row.locator("input[type=color]").fill("#e06c75");
+  await page.locator(".nav-item", { hasText: "Today" }).click();
+  const after = await colourOf();
+  if (after !== "#e06c75" || before === after) await fail(`block colour did not follow the category (${before} -> ${after})`);
+  ok("Changing a category colour recolours its blocks");
 
   // 12. Close and reopen a week later: everything is still there
   await page.clock.setSystemTime(local(2026, 12, 2, 10, 0));

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Ban, Check, ChevronRight, Combine, Copy, CopyPlus, Play, RotateCcw, Scissors, Trash2, CalendarPlus } from "lucide-react";
+import { Ban, Check, Pencil, Repeat, ChevronRight, Combine, Copy, CopyPlus, Play, RotateCcw, Scissors, Trash2, CalendarPlus } from "lucide-react";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
+import * as P from "../state/planning";
 import type { Id } from "../domain/types";
 import { CatDot, usePlacement, useOutside } from "./bits";
 import { findMergeCandidate, splitInterval } from "../domain/calendar";
@@ -52,6 +53,7 @@ export function ItemContextMenu(p: Props) {
           <div className="menu-sep" />
         </>
       )}
+      <MenuItem icon={<Pencil size={13} />} label="Rename" hint="F2" onClick={run(() => A.startRename({ kind: p.kind, id: p.id }))} />
       <div className="menu-item has-sub" onMouseEnter={() => setSub(true)} onMouseLeave={() => setSub(false)} role="menuitem" aria-haspopup>
         <span className="menu-icon">
           <CatDot color={categories.find((c) => c.id === item.categoryId)?.color ?? "#888"} />
@@ -71,6 +73,13 @@ export function ItemContextMenu(p: Props) {
       {block && (
         <>
           <div className="menu-sep" />
+          {block.recurrenceId && (
+            <>
+              <MenuItem icon={<Repeat size={13} />} label="Stop repeating after this" onClick={run(() => P.stopRepeating(block.id))} />
+              <MenuItem icon={<Trash2 size={13} />} label="Delete this and following" onClick={run(() => P.deleteFollowing(block.id))} />
+              <div className="menu-sep" />
+            </>
+          )}
           <MenuItem icon={<CopyPlus size={13} />} label="Duplicate" hint="Ctrl D" onClick={run(() => A.duplicateBlock(block.id))} />
           <MenuItem icon={<CalendarPlus size={13} />} label="Duplicate to tomorrow" onClick={run(() => A.duplicateBlock(block.id, 1))} />
           <MenuItem icon={<Copy size={13} />} label="Copy" hint="Ctrl C" onClick={run(() => A.copyBlocks([block.id]))} />

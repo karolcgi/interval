@@ -3,9 +3,12 @@
 
 import { store, type CalendarMode, type PausedTimer, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
+import type { FocusState } from "../domain/focus";
 import * as repo from "../db/repo";
-import type { Block, Category, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, Budget, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
+import { ensureOccurrences } from "./planning";
+import { focusUserStop, nextRound as focusNextRound, setFocusState } from "./focus";
 import { findMergeCandidate, mergedInterval, splitInterval, splitPoint } from "../domain/calendar";
 
 // ------------------------------------------------------------------ helpers
@@ -71,9 +74,10 @@ function invert(changes: Change[]): Change[] {
   return changes.map((c) => ({ ...c, before: c.after, after: c.before }) as Change);
 }
 
-export async function commit(label: string, changes: Change[], opts: { undoable?: boolean; silent?: boolean } = {}) {
-  if (changes.length === 0) return;
-  await db().batch(forward(changes));
+export async function commit(label: string, changes: Change[], opts: { undoable?: boolean; silent?: boolean; extra?: Statement[] } = {}) {
+  if (changes.length === 0 && !opts.extra?.length) return;
+  // `extra` statements (e.g. recurrence rule edits) run first, in the same transaction.
+  await db().batch([...(opts.extra ?? []), ...forward(changes)]);
   if (opts.undoable !== false) {
     undoStack.push({ label, changes });
     if (undoStack.length > MAX_UNDO) undoStack.shift();
@@ -137,6 +141,8 @@ export async function refresh() {
   const seq = ++refreshSeq;
   const range = visibleRange(s.date, s.calendarMode, s.settings.weekStartsOn);
   const today = startOfDay(Date.now());
+  await ensureOccurrences(Math.max(range.end - 1, addDays(today, 14)));
+  if (seq !== refreshSeq) return;
   const [blocks, sessions, tBlocks, tSessions, running, note] = await Promise.all([
     repo.listBlocks(s.db, range.start, range.end),
     repo.listSessions(s.db, range.start, range.end),
@@ -161,14 +167,18 @@ export async function refresh() {
 
 export async function reloadMeta() {
   const d = db();
-  const [categories, tags, settings, paused, acc] = await Promise.all([
+  const [categories, tags, settings, paused, acc, rules, templates, budgets] = await Promise.all([
     repo.listCategories(d),
     repo.listTags(d),
     repo.loadSettings(d),
     repo.getSetting<PausedTimer>(d, "timer.paused"),
     repo.getSetting<number>(d, "timer.accumulated"),
+    repo.listRules(d),
+    repo.listTemplates(d),
+    repo.listBudgets(d),
   ]);
-  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0 });
+  const focus = await repo.getSetting<FocusState>(d, "timer.focus");
+  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, focus });
 }
 
 // -------------------------------------------------------------- navigation
@@ -205,6 +215,29 @@ export function stepDate(dir: -1 | 1) {
 
 export function select(selection: { kind: "block" | "session"; id: Id } | null) {
   store.set({ selection });
+}
+
+/** Begin editing an item's name inline on the timeline (F2, double-click, context menu). */
+export function startRename(target: { kind: "block" | "session"; id: Id }) {
+  store.set({ selection: target, renaming: target });
+}
+
+export function cancelRename() {
+  if (store.get().renaming) store.set({ renaming: null });
+}
+
+/** Commit an inline rename. An empty name clears it (the category name shows instead). */
+export async function renameItem(target: { kind: "block" | "session"; id: Id }, name: string) {
+  store.set({ renaming: null });
+  const title = name.trim() || null;
+  const s = store.get();
+  if (target.kind === "block") {
+    const b = s.blocks.find((x) => x.id === target.id);
+    if (b && b.title !== title) await updateBlock(b.id, { title }, "Rename block");
+  } else {
+    const x = s.sessions.find((y) => y.id === target.id);
+    if (x && x.title !== title) await updateSession(x.id, { title }, "Rename session");
+  }
 }
 
 // ------------------------------------------------------------ settings/meta
@@ -292,12 +325,35 @@ export async function deleteTag(id: Id) {
   await refresh();
 }
 
-export async function saveDailyNote(patch: { intention?: string | null; reflection?: string | null }) {
+export async function saveDailyNote(patch: Partial<Pick<DailyNote, "intention" | "reflection" | "plannedAt" | "reviewedAt">>, date = dayKey(store.get().date)) {
   const s = store.get();
-  const date = dayKey(s.date);
-  const note = { date, intention: s.dailyNote?.intention ?? null, reflection: s.dailyNote?.reflection ?? null, ...patch, updatedAt: Date.now() };
+  const current = s.dailyNote?.date === date ? s.dailyNote : await repo.getDailyNote(db(), date);
+  const note: DailyNote = {
+    date,
+    intention: current?.intention ?? null,
+    reflection: current?.reflection ?? null,
+    plannedAt: current?.plannedAt ?? null,
+    reviewedAt: current?.reviewedAt ?? null,
+    ...patch,
+    updatedAt: Date.now(),
+  };
   await db().batch([repo.upsertDailyNoteStmt(note)]);
-  store.set({ dailyNote: note });
+  if (dayKey(store.get().date) === date) store.set({ dailyNote: note });
+  return note;
+}
+
+// ------------------------------------------------------------------ budgets
+
+export async function saveBudget(b: Budget) {
+  if (b.minMinutes === null && b.maxMinutes === null) throw new Error("Set a target, a limit, or both.");
+  if (b.minMinutes !== null && b.maxMinutes !== null && b.maxMinutes < b.minMinutes) throw new Error("The limit is below the target.");
+  await db().batch([repo.upsertBudgetStmt(b)]);
+  store.set({ budgets: await repo.listBudgets(db()) });
+}
+
+export async function deleteBudget(id: Id) {
+  await db().batch([repo.deleteBudgetStmt(id)]);
+  store.set({ budgets: await repo.listBudgets(db()) });
 }
 
 // ------------------------------------------------------------------ blocks
@@ -478,9 +534,13 @@ export async function deleteSession(id: Id) {
 
 const HEARTBEAT_KEY = "timer.heartbeat";
 
-export async function startTimer(opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode; accumulatedMs?: number } = {}) {
+export async function startTimer(
+  opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode; accumulatedMs?: number; startAt?: number; keepFocus?: boolean } = {},
+) {
   const s = store.get();
-  const now = Date.now();
+  const now = opts.startAt ?? Date.now();
+  // Starting any timer by hand ends a Pomodoro/Flowtime cycle; the focus engine passes keepFocus.
+  if (!opts.keepFocus && s.focus) await setFocusState(null);
   const block = opts.blockId ? findBlock(opts.blockId) ?? (await repo.getBlock(db(), opts.blockId)) : null;
   const categoryId = opts.categoryId ?? block?.categoryId ?? s.categories.find((c) => !c.archivedAt && !c.isBreak)?.id;
   if (!categoryId) return toast("Create a category first");
@@ -518,7 +578,9 @@ async function stopChanges(at: number): Promise<Change[]> {
   return changes;
 }
 
-export async function stopTimer(at = Date.now()) {
+export async function stopTimer(at = Date.now(), opts: { internal?: boolean } = {}) {
+  // A user stop during Pomodoro/Flowtime goes through the focus engine (suggested breaks etc.).
+  if (!opts.internal && store.get().focus) return focusUserStop(at);
   const s = store.get();
   if (!s.running && s.paused) {
     // Stopping a paused run just clears the pause; the time was already recorded.
@@ -542,21 +604,27 @@ export async function pauseTimer() {
   if (!r) return;
   const now = Date.now();
   const paused: PausedTimer = { categoryId: r.categoryId, blockId: r.blockId, tagIds: r.tagIds, title: r.title, pausedAt: now, accumulatedMs: s.runAccumulatedMs + (now - r.startAt) };
-  await db().batch([...repo.upsertSessionStmts({ ...r, endAt: now, updatedAt: now }), repo.setSettingStmt("timer.paused", paused)]);
-  store.set({ paused });
+  const f = s.focus;
+  const focus = f && f.phaseEnd !== null ? { ...f, pausedRemaining: Math.max(0, f.phaseEnd - now) } : f;
+  await db().batch([...repo.upsertSessionStmts({ ...r, endAt: now, updatedAt: now }), repo.setSettingStmt("timer.paused", paused), repo.setSettingStmt("timer.focus", focus)]);
+  store.set({ paused, focus });
   await refresh();
 }
 
 export async function resumeTimer() {
-  const p = store.get().paused;
+  const { paused: p, focus: f, running } = store.get();
   if (!p) return;
-  await startTimer({ blockId: p.blockId, categoryId: p.categoryId, tagIds: p.tagIds, title: p.title, accumulatedMs: p.accumulatedMs });
+  const now = Date.now();
+  const mode = f ? (f.phase === "break" ? running?.mode ?? f.kind : f.kind) : undefined;
+  await startTimer({ blockId: p.blockId, categoryId: p.categoryId, tagIds: p.tagIds, title: p.title, accumulatedMs: p.accumulatedMs, mode, keepFocus: true });
+  if (f && f.pausedRemaining !== null) await setFocusState({ ...f, phaseEnd: now + f.pausedRemaining, pausedRemaining: null });
 }
 
 export async function toggleTimer() {
   const s = store.get();
   if (s.running) return stopTimer();
   if (s.paused) return resumeTimer();
+  if (s.focus?.phase === "ready") return focusNextRound();
   const sel = s.selection;
   if (sel?.kind === "block") return startTimer({ blockId: sel.id });
   return startTimer({});
@@ -600,4 +668,24 @@ export async function resolveSleepGap(choice: "keep" | "exclude" | "stop") {
   ]);
   store.set({ runAccumulatedMs: acc });
   await refresh();
+}
+
+// ------------------------------------------------------------------ backups
+
+/**
+ * Daily rolling backup into settings.backupDir (default: `backups` beside the database).
+ * `force` re-writes today's copy and confirms with a toast. Desktop only; never throws.
+ */
+export async function backupNow(force = true): Promise<string | null> {
+  if (store.get().db?.kind !== "tauri") return null;
+  const s = store.get().settings;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const path = await invoke<string | null>("db_backup_daily", { keep: Math.max(1, s.backupKeepDays), dir: s.backupDir, force });
+    if (force && path) toast(`Backed up to ${path}`);
+    return path;
+  } catch (e) {
+    reportError(e);
+    return null;
+  }
 }

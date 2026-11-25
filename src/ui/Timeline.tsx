@@ -1,11 +1,12 @@
 // The day/week timeline: the core interaction surface.
 //
 // Gestures (all snap to the configured interval):
-//   drag on empty Plan lane     -> create a planned block (category picker opens)
+//   click or drag on empty Plan lane -> create a planned block (name, then category)
 //   drag on empty Actual lane   -> log actual time retroactively
 //   drag a block/session        -> move (across days in week view); hold Alt or Ctrl to copy
 //   drag top/bottom edge        -> resize
 //   double-click empty space    -> create a block of the default length
+//   double-click an item / F2   -> rename it inline
 //   right-click an item         -> context menu
 //   Ctrl + wheel                -> zoom
 
@@ -43,6 +44,7 @@ export function Timeline({ days }: { days: number[] }) {
   const categories = useApp((s) => s.categories);
   const tags = useApp((s) => s.tags);
   const selection = useApp((s) => s.selection);
+  const renaming = useApp((s) => s.renaming);
   const focusedDate = useApp((s) => s.date);
   const now = useNow(15_000);
 
@@ -202,7 +204,13 @@ export function Timeline({ days }: { days: number[] }) {
       if (!d) return;
       if (d.kind === "create") {
         if (!d.moved) {
+          // A plain click on an empty Plan slot creates a default-length block there, unless it is
+          // just clearing a selection. In the Actual lane a click only clears the selection.
+          const hadSelection = store.get().selection !== null;
           A.select(null);
+          if (d.lane !== "plan" || hadSelection) return;
+          const iv = dragToInterval(d.day, d.anchor, Math.min(1440, d.anchor + settings.defaultBlockMinutes), snapMinutes);
+          setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
           return;
         }
         const iv = dragToInterval(d.day, d.anchor, d.cur, snapMinutes);
@@ -249,7 +257,7 @@ export function Timeline({ days }: { days: number[] }) {
       window.removeEventListener("keydown", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag !== null, minuteAt, multi, snapMinutes]);
+  }, [drag !== null, minuteAt, multi, snapMinutes, settings.defaultBlockMinutes]);
 
   function itemInterval(lane: Lane, id: Id): Interval | null {
     if (lane === "plan") {
@@ -262,7 +270,15 @@ export function Timeline({ days }: { days: number[] }) {
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("[data-item]")) return;
+    if (target.closest("[data-action]")) return;
+    const itemEl = target.closest<HTMLElement>("[data-item]");
+    if (itemEl) {
+      const id = itemEl.dataset.item!;
+      if (id === "__copy__") return;
+      const lane = itemEl.closest<HTMLElement>("[data-lane]")?.dataset.lane as Lane;
+      A.startRename({ kind: lane === "plan" ? "block" : "session", id });
+      return;
+    }
     const colEl = target.closest<HTMLDivElement>("[data-day]");
     const laneEl = target.closest<HTMLElement>("[data-lane]");
     if (!colEl || !laneEl) return;
@@ -345,6 +361,7 @@ export function Timeline({ days }: { days: number[] }) {
                 now={now}
                 compact={multi}
                 selection={selection}
+                renaming={renaming}
                 catById={catById}
                 tagById={tagById}
               />
@@ -390,6 +407,7 @@ interface ColumnProps {
   now: number;
   compact: boolean;
   selection: { kind: "block" | "session"; id: Id } | null;
+  renaming: { kind: "block" | "session"; id: Id } | null;
   catById: Map<Id, import("../domain/types").Category>;
   tagById: Map<Id, import("../domain/types").Tag>;
 }
@@ -461,6 +479,7 @@ function DayColumn(p: ColumnProps) {
               lay={lay}
               ghost={b.ghost}
               selected={p.selection?.kind === "block" && p.selection.id === b.id}
+              renaming={!b.ghost && p.renaming?.kind === "block" && p.renaming.id === b.id}
               compact={p.compact}
               catById={p.catById}
               tagById={p.tagById}
@@ -484,6 +503,7 @@ function DayColumn(p: ColumnProps) {
                 lay={lay}
                 ghost={s.ghost}
                 selected={p.selection?.kind === "session" && p.selection.id === s.id}
+                renaming={!s.ghost && p.renaming?.kind === "session" && p.renaming.id === s.id}
                 compact={p.compact}
                 catById={p.catById}
               />
@@ -528,6 +548,7 @@ function BlockView(p: {
   lay: { col: number; cols: number };
   ghost: boolean;
   selected: boolean;
+  renaming: boolean;
   compact: boolean;
   catById: ColumnProps["catById"];
   tagById: ColumnProps["tagById"];
@@ -556,7 +577,7 @@ function BlockView(p: {
       <div className="block-body">
         <div className="block-title">
           {b.recurrenceId && <Repeat size={10} />}
-          <span>{label}</span>
+          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} /> : <span className={b.title ? "" : "unnamed"}>{label}</span>}
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && (
@@ -565,7 +586,7 @@ function BlockView(p: {
             {subtitle && !p.compact ? ` · ${subtitle}` : ""}
           </div>
         )}
-        {!tiny && p.compact && tagNames.length > 0 && p.pos.height > 54 && <div className="block-meta">{tagNames.join(", ")}</div>}
+        {!tiny && p.compact && subtitle && p.pos.height > 54 && <div className="block-meta">{subtitle}</div>}
       </div>
       {!p.ghost && b.status !== "completed" && b.status !== "in_progress" && b.status !== "skipped" && (
         <div className="block-actions">
@@ -591,6 +612,7 @@ function SessionView(p: {
   lay: { col: number; cols: number };
   ghost: boolean;
   selected: boolean;
+  renaming: boolean;
   compact: boolean;
   catById: ColumnProps["catById"];
 }) {
@@ -607,14 +629,62 @@ function SessionView(p: {
       aria-label={`Recorded ${cat?.name ?? ""} ${dur}`}
     >
       <div className="handle top" data-handle="start" />
-      {!p.compact && p.pos.height >= 22 && (
+      {p.renaming ? (
         <div className="session-body">
-          <span className="session-dur">{dur}</span>
-          {p.pos.height >= 40 && <span className="session-name">{s.title || cat?.name}</span>}
+          <InlineName value={s.title} placeholder={cat?.name ?? "Name"} target={{ kind: "session", id: s.id }} />
         </div>
+      ) : (
+        !p.compact &&
+        p.pos.height >= 22 && (
+          <div className="session-body">
+            <span className="session-dur">{dur}</span>
+            {p.pos.height >= 40 && <span className="session-name">{s.title || cat?.name}</span>}
+          </div>
+        )
       )}
       {!running && <div className="handle bottom" data-handle="end" />}
     </div>
+  );
+}
+
+/** Inline name editor on a block or session. Enter or blur saves, Escape cancels. */
+function InlineName(p: { value: string | null; placeholder: string; target: { kind: "block" | "session"; id: Id } }) {
+  const [v, setV] = useState(p.value ?? "");
+  const ref = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  const save = () => {
+    if (done.current) return;
+    done.current = true;
+    void A.renameItem(p.target, v).catch(A.reportError);
+  };
+  return (
+    <input
+      ref={ref}
+      data-action
+      className="inline-name"
+      value={v}
+      placeholder={p.placeholder}
+      aria-label="Name"
+      spellCheck={false}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          done.current = true;
+          A.cancelRename();
+        }
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    />
   );
 }
 

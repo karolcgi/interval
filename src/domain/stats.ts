@@ -103,7 +103,7 @@ export interface StatsResult {
   byCategory: Array<{ categoryId: Id; recordedMs: number; plannedMs: number }>;
   byTag: Array<{ tagId: Id; recordedMs: number; plannedMs: number }>;
   byDay: Map<string, Map<Id, number>>; // day -> categoryId -> ms (includes breaks)
-  buckets: Array<{ key: string; start: number; byCategory: Map<Id, number>; totalMs: number }>;
+  buckets: Array<{ key: string; start: number; byCategory: Map<Id, number>; totalMs: number; plannedMs: number }>;
   byHour: number[]; // 24 entries, ms
   byWeekday: number[]; // 7 entries (0 = Sunday), ms
 }
@@ -192,7 +192,7 @@ export function computeStats(params: {
   const bucketIndex = new Map<string, number>();
   for (let t = bucketStart(range.start); t < range.end; t = bucketNext(t)) {
     bucketIndex.set(dayKey(t), buckets.length);
-    buckets.push({ key: dayKey(t), start: t, byCategory: new Map(), totalMs: 0 });
+    buckets.push({ key: dayKey(t), start: t, byCategory: new Map(), totalMs: 0, plannedMs: 0 });
   }
   for (const [day, m] of byDay) {
     const idx = bucketIndex.get(dayKey(bucketStart(parseDayKey(day).getTime())));
@@ -201,6 +201,14 @@ export function computeStats(params: {
     for (const [cid, ms] of m) {
       b.byCategory.set(cid, (b.byCategory.get(cid) ?? 0) + ms);
       if (!isBreak(cid)) b.totalMs += ms;
+    }
+  }
+
+  for (const p of planned) {
+    if (isBreak(p.block.categoryId)) continue;
+    for (const d of splitByDay(p)) {
+      const idx = bucketIndex.get(dayKey(bucketStart(parseDayKey(d.day).getTime())));
+      if (idx !== undefined) buckets[idx].plannedMs += d.end - d.start;
     }
   }
 

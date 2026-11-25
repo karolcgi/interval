@@ -10,6 +10,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      preview:
+        description: "Preview build: publish as a pre-release (version X.Y.Z-preview.N). Installed copies never auto-update to it."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,6 +46,11 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
+      # Preview builds get a pre-release version (lower than the final X.Y.Z, so the real release still updates it).
+      - name: Preview version
+        if: ${{ inputs.preview }}
+        shell: bash
+        run: node -e "const f='package.json';const p=require('./'+f);p.version=p.version.replace(/-.*$/,'')+'-preview.${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n');console.log(p.version)"
       # Pasted secrets often carry a trailing newline, which breaks the key password.
       - name: Normalise signing secrets
         shell: bash
@@ -59,9 +69,11 @@ jobs:
           tagName: v__VERSION__
           releaseName: Interval v__VERSION__
           releaseBody: |
+            ${{ inputs.preview && '**Preview build for testing.** Not offered as an auto-update. Install it over your current version; your data is untouched.' || '' }}
+
             Download and run **Interval_*_x64-setup.exe** the first time.
             After that, Interval updates itself: an "Update available" card appears in the sidebar.
             Your data folder (%APPDATA%\app.interval.desktop) is never touched by installs or updates.
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ inputs.preview == true }}
           includeUpdaterJson: true

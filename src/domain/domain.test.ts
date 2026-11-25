@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { t } from "../test/helpers";
-import { addDays, hoursInDay, minuteOfDay, previousRange, resolveRange, shiftDaysKeepClock, splitByDay, startOfDay, startOfWeek, HOUR, MINUTE } from "./time";
+import { addDays, dayKey, hoursInDay, minuteOfDay, previousRange, resolveRange, shiftDaysKeepClock, splitByDay, startOfDay, startOfWeek, HOUR, MINUTE } from "./time";
 import { findOverlaps, resolveOverlaps } from "./overlap";
 import { computeStats, expandCategoryIds } from "./stats";
 import { canMerge, dragToInterval, layoutColumns, moveInterval, pxToMinute, resizeInterval, snapMinute, splitInterval, splitPoint } from "./calendar";
 import type { Block, Category, Session } from "./types";
 import { fmtClock, fmtDuration, isoLocal } from "./format";
 import { parseCsv, toCsv } from "./csv";
+import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./focus";
+import { activeRuns } from "./analytics";
+import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
+import { buildDayLog, dayLogMarkdown, rangeLogMarkdown } from "./daylog";
 
 // ------------------------------------------------------------- fixtures
 
@@ -260,5 +264,118 @@ describe("formatting & csv", () => {
   it("round-trips CSV with quotes, commas and newlines", () => {
     const csv = toCsv(["a", "b"], [["x, y", 'say "hi"'], ["line\nbreak", ""]]);
     expect(parseCsv(csv)).toEqual([["a", "b"], ["x, y", 'say "hi"'], ["line\nbreak", ""]]);
+  });
+});
+
+// ------------------------------------------------------------- recurrence
+
+describe("recurrence rules", () => {
+  const days = (rrule: string, startsOn: string, from: [number, number, number], to: [number, number, number], endsOn: string | null = null) =>
+    occurrencesBetween({ rrule, startsOn, endsOn }, new Date(...from).getTime(), new Date(...to).getTime()).map((d) => dayKey(d));
+
+  it("parses and formats a readable subset of RRULE", () => {
+    const r = parseRule("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR,MO");
+    expect(r).toEqual({ freq: "WEEKLY", interval: 2, byDay: ["MO", "FR"], byMonthDay: null });
+    expect(formatRule(r)).toBe("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR");
+    expect(parseRule("garbage").freq).toBe("DAILY");
+  });
+
+  it("every weekday skips weekends", () => {
+    expect(days("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "2026-11-25", [2026, 10, 23], [2026, 11, 2])).toEqual([
+      "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-30", "2026-12-01", "2026-12-02",
+    ]);
+  });
+
+  it("every 2 weeks keeps parity from the start week", () => {
+    expect(days("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", "2026-11-27", [2026, 10, 1], [2027, 0, 1])).toEqual(["2026-11-27", "2026-12-11", "2026-12-25"]);
+  });
+
+  it("monthly on the 31st falls back to the last day of shorter months", () => {
+    expect(days("FREQ=MONTHLY;BYMONTHDAY=31", "2027-01-31", [2027, 0, 1], [2027, 3, 30])).toEqual(["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30"]);
+  });
+
+  it("daily with interval across the DST change, honouring ends_on", () => {
+    expect(days("FREQ=DAILY;INTERVAL=2", "2026-10-23", [2026, 9, 20], [2026, 10, 3], "2026-10-31")).toEqual([
+      "2026-10-23", "2026-10-25", "2026-10-27", "2026-10-29", "2026-10-31",
+    ]);
+  });
+
+  it("describes rules in plain language", () => {
+    expect(describeRule("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")).toBe("Every weekday");
+    expect(describeRule("FREQ=WEEKLY;BYDAY=FR")).toBe("Every week on Friday");
+    expect(describeRule("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH")).toBe("Every 2 weeks on Mon, Thu");
+    expect(describeRule("FREQ=MONTHLY;BYMONTHDAY=1")).toBe("Monthly on the 1st");
+    expect(describeRule("FREQ=DAILY")).toBe("Every day");
+  });
+});
+
+describe("focus transitions", () => {
+  it("flowtime break table", () => {
+    expect([10, 30, 60, 120].map((m) => flowtimeBreakMinutes(m * MINUTE))).toEqual([5, 8, 10, 15]);
+  });
+  it("long break every Nth round", () => {
+    const p = { focus: 25, brk: 5, long: 15, every: 4 };
+    expect([1, 2, 3, 4, 5, 8].map((r) => breakLength(p, r))).toEqual([5, 5, 5, 15, 5, 15]);
+  });
+  it("nothing happens while paused or before the deadline", () => {
+    const f: FocusState = { kind: "pomodoro", phase: "focus", preset: { focus: 25, brk: 5, long: 15, every: 4 }, phaseStart: 0, phaseEnd: 1000, round: 0, pausedRemaining: null, suggestedBreakMin: null, categoryId: "c", tagIds: [], title: null, blockId: null };
+    expect(nextStep(f, 999).type).toBe("none");
+    expect(nextStep({ ...f, pausedRemaining: 5 }, 5000).type).toBe("none");
+    expect(nextStep(f, 1000)).toEqual({ type: "focus-done", at: 1000, breakMinutes: 5, round: 1 });
+  });
+});
+
+describe("advanced analytics", () => {
+  it("planned time per bucket excludes breaks and skipped blocks", () => {
+    const cats = [{ id: "w", isBreak: false }, { id: "b", isBreak: true }] as Category[];
+    const blk = (id: string, cat: string, d: number, h0: number, h1: number, status: Block["status"] = "planned") =>
+      ({ id, categoryId: cat, startAt: t(2026, 11, d, h0), endAt: t(2026, 11, d, h1), status, tagIds: [], createdAt: 0 }) as unknown as Block;
+    const st = computeStats({
+      sessions: [],
+      blocks: [blk("a", "w", 23, 9, 12), blk("b", "b", 23, 12, 13), blk("c", "w", 24, 9, 11, "skipped"), blk("d", "w", 25, 22, 26)],
+      categories: cats,
+      range: { start: t(2026, 11, 23), end: t(2026, 11, 30) },
+      now: t(2026, 11, 23),
+    });
+    expect(st.buckets.map((b) => b.plannedMs / HOUR)).toEqual([3, 0, 2, 2, 0, 0, 0]); // midnight-crossing block split
+  });
+
+  it("active-day runs ignore an empty today", () => {
+    const day = (d: number, h: number) => ({ day: t(2026, 11, d), ms: h * HOUR });
+    expect(activeRuns([day(20, 1), day(21, 0), day(22, 2), day(23, 1), day(24, 3), day(25, 0)], t(2026, 11, 25))).toEqual({ longest: 3, current: 3, active: 4 });
+  });
+});
+
+describe("day log", () => {
+  const D = t(2026, 11, 25);
+  const blocks: Block[] = [{ id: "b1", title: "Client X boards", categoryId: "work" } as Block];
+  it("builds a markdown timeline from recorded sessions, titles first, merging resumed sessions", () => {
+    const sessions = [
+      sess(t(2026, 11, 25, 9), t(2026, 11, 25, 10, 30), "study", [], { title: "Houdini VEX" }),
+      sess(t(2026, 11, 25, 10, 30), t(2026, 11, 25, 10, 45), "break"),
+      sess(t(2026, 11, 25, 11), t(2026, 11, 25, 12), "work", [], { blockId: "b1" }),
+      sess(t(2026, 11, 25, 12), t(2026, 11, 25, 13), "work", [], { blockId: "b1" }), // resumed: merges
+      sess(t(2026, 11, 24, 23), t(2026, 11, 25, 0, 30), "work"), // crosses midnight: clipped
+      sess(t(2026, 11, 25, 14), null, "study", [], { title: "Running *thing*" }),
+    ];
+    const log = buildDayLog(D, sessions, blocks, CATS, [], t(2026, 11, 25, 14, 20));
+    expect(log.entries.map((e) => e.title)).toEqual(["work", "Houdini VEX", "break", "Client X boards", "Running *thing*"]);
+    expect(log.entries[3].end - log.entries[3].start).toBe(2 * HOUR);
+    expect(log.breakMs).toBe(15 * MINUTE);
+    expect(log.totalMs).toBe(30 * MINUTE + 90 * MINUTE + 2 * HOUR + 20 * MINUTE);
+    const md = dayLogMarkdown(log);
+    expect(md).toContain("- 09:00–10:30 **Houdini VEX** · study · 1h 30m");
+    expect(md).toContain("- 10:30–10:45 break · 15m");
+    expect(md).toContain("- 11:00–13:00 **Client X boards** · work · 2h");
+    expect(md).toContain("- 00:00–00:30 **work** · 30m");
+    expect(md).toContain("- 14:00–now **Running \\*thing\\*** · study · 20m");
+    expect(md).toMatch(/\*\*Total 4h 20m\*\* · work 2h 30m · study 1h 50m · Breaks 15m\n$/);
+  });
+  it("handles empty days and multi-day exports", () => {
+    const empty = buildDayLog(D, [], [], CATS, [], D);
+    expect(dayLogMarkdown(empty, { heading: false })).toBe("Nothing recorded.\n");
+    const d2 = buildDayLog(addDays(D, 1), [sess(t(2026, 11, 26, 9), t(2026, 11, 26, 10), "work")], [], CATS, [], t(2026, 11, 27));
+    const md = rangeLogMarkdown([empty, d2]);
+    expect(md.startsWith("## Thursday 26 November 2026\n\n- 09:00–10:00 **work** · 1h")).toBe(true);
   });
 });
