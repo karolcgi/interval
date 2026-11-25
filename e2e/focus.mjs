@@ -45,6 +45,7 @@ try {
   await ctx.clock.install({ time: local(2026, 11, 25, 10, 5) });
   page = await ctx.newPage();
   watch(page, "main");
+  await page.addInitScript(() => (window.__intervalSounds = []));
   await page.goto(`${base}?db=e2ef-${Date.now()}&demo=1`);
   await page.locator(".tl-col").first().waitFor({ timeout: 30000 });
   const panel = page.locator(".focus-panel");
@@ -67,6 +68,28 @@ try {
   await shot("focus-panel-idle", panel);
   ok("Docked panel sits under Activities; presets 25/50 set the clock");
 
+  // 1b. Category picker: choosing a category drops the suggested block; relink brings it back
+  const pick = async (name) => {
+    await panel.locator(".ftp-cat-btn").click();
+    await panel.getByRole("listbox", { name: "Category" }).getByRole("option", { name }).click();
+    await expectText(panel.locator(".ftp-cat-btn"), new RegExp(name), `category ${name} shown`);
+  };
+  const hadBlock = await panel.locator(".ftp-block").count();
+  const blockCat = (await panel.locator(".ftp-cat-name").textContent()).trim();
+  await pick(blockCat === "Studying" ? "Personal art" : "Studying");
+  if (hadBlock) {
+    if (await panel.locator(".ftp-block").count()) await fail("block should be unlinked after choosing another category");
+    await panel.locator(".ftp-relink").click();
+    await panel.locator(".ftp-block").waitFor();
+    await expectText(panel.locator(".ftp-cat-name"), new RegExp(blockCat), "relinking restores the block's category");
+  }
+  await panel.locator(".ftp-cat-btn").focus();
+  await page.keyboard.press("ArrowDown");
+  await panel.getByRole("listbox").waitFor();
+  await page.keyboard.press("Escape");
+  await panel.getByRole("listbox").waitFor({ state: "detached" });
+  ok("Category picker opens, picks, closes with Escape; picking another category unlinks the block, relink restores it");
+
   // 2. Start (linked to the planned block if there is one), the clock counts down
   const linked = await panel.locator(".ftp-block").count();
   await panel.getByRole("button", { name: "Start", exact: true }).click();
@@ -75,7 +98,15 @@ try {
   await ctx.clock.runFor(60_000);
   await expectText(panel.locator(".ftp-clock"), /24:0\d|23:5\d/, "counting down");
   await shot("focus-panel-running", panel);
-  ok(`Pomodoro started${linked ? ", linked to the current planned block" : ""}; countdown runs`);
+  await pick("Creative research");
+  await ctx.clock.runFor(1500);
+  const recCat = await page.evaluate(async () => {
+    const st = (await import("/src/state/store.ts")).store.get();
+    return st.categories.find((c) => c.id === st.running?.categoryId)?.name;
+  });
+  if (recCat !== "Creative research") await fail(`running session category is ${recCat}`);
+  await pick(blockCat === "Creative research" ? "Studying" : blockCat || "Studying");
+  ok(`Pomodoro started${linked ? ", linked to the current planned block" : ""}; countdown runs; category can be changed while running`);
 
   // 3. Floating mini timer shares the state and sends commands back
   const mini = await ctx.newPage();
@@ -143,6 +174,8 @@ try {
   await expectText(panel.locator(".ftp-label"), /Focus 1 of 4/, "back in focus 1");
   await expectText(panel.locator(".ftp-clock"), /0[45]:\d\d/, "five more minutes");
   await page.locator(".in-app-completion").waitFor({ state: "detached" });
+  const sounds = await page.evaluate(() => window.__intervalSounds);
+  if (!sounds.includes("focusStart") || !sounds.includes("focusEnd")) await fail(`sounds played: ${JSON.stringify(sounds)}`);
   ok("Focus ends → break starts, completion card + popup; “+5 min focus” continues the round seamlessly");
 
   // 7. Skip to break, skip break, stop
@@ -168,6 +201,30 @@ try {
   await page.getByRole("tab", { name: "This year" }).click();
   await fh.getByRole("radiogroup", { name: "Focus history period" }).getByRole("radio", { name: "Month" }).click();
   ok("Statistics › Focus timer: focused time, sessions, breaks, per-period and per-category breakdown");
+
+  // 9. Sidebar width: drag the edge, remembered after a reload; double-click resets
+  const side = page.locator(".sidebar");
+  const w0 = (await side.boundingBox()).width;
+  const grip = page.locator(".sidebar-resizer");
+  const g = await grip.boundingBox();
+  await page.mouse.move(g.x + g.width / 2, g.y + 300);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 60, g.y + 300, { steps: 6 });
+  await page.mouse.move(g.x + 100, g.y + 300, { steps: 6 });
+  await page.mouse.up();
+  const w1 = (await side.boundingBox()).width;
+  if (Math.abs(w1 - (w0 + 97)) > 6) await fail(`sidebar ${w0} → ${w1}, expected about +100`);
+  await page.waitForTimeout(1500); // let the browser database flush before reloading
+  await page.reload();
+  await page.locator(".tl-col").first().waitFor({ timeout: 30000 });
+  const w2 = (await side.boundingBox()).width;
+  if (Math.abs(w2 - w1) > 2) await fail(`sidebar width not remembered: ${w1} → ${w2}`);
+  await shot("focus-sidebar-wide");
+  await page.locator(".sidebar-resizer").dblclick();
+  await page.waitForTimeout(300);
+  const w3 = (await side.boundingBox()).width;
+  if (Math.abs(w3 - w0) > 2) await fail(`double-click should reset to ${w0}, got ${w3}`);
+  ok(`Sidebar resizes by dragging its edge (${Math.round(w0)} → ${Math.round(w1)}px), is remembered, double-click resets`);
 
   if (errors.length) throw new Error(`Console errors:\n${errors.join("\n")}`);
   console.log(`\nAll ${step} focus timer steps passed.`);

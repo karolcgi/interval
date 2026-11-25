@@ -1,6 +1,6 @@
 [package]
 name = "interval"
-version = "0.4.0"
+version = "0.4.1"
 description = "Interval — local-first time blocking and time tracking"
 edition = "2021"
 rust-version = "1.77"

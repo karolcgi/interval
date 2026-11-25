@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bindings, comboOf } from "../state/shortcuts";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
@@ -28,6 +28,7 @@ export function App() {
   const view = useApp((s) => s.view);
   const demo = useApp((s) => s.demo);
   const sidebarOpen = useApp((s) => s.settings.sidebarOpen);
+  const sidebarWidth = useApp((s) => s.settings.sidebarWidth);
   const panelOpen = useApp((s) => s.settings.rightPanelOpen);
   useTheme();
   useShortcuts();
@@ -54,8 +55,9 @@ export function App() {
   if (!ready) return <div className="boot-screen" aria-busy="true" />;
 
   return (
-    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`}>
+    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`} style={sidebarWidth ? ({ ["--sidebar-w" as string]: `${sidebarWidth}px` } as React.CSSProperties) : undefined}>
       {sidebarOpen && <Sidebar />}
+      {sidebarOpen && <SidebarResizer />}
       <main className="workspace">
         {demo && (
           <div className="demo-ribbon">
@@ -221,5 +223,55 @@ function InAppCompletion() {
     <div className="in-app-completion">
       <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} />
     </div>
+  );
+}
+
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 440;
+
+/** Drag the sidebar's right edge to resize it; double-click to go back to the default width. */
+function SidebarResizer() {
+  const [drag, setDrag] = useState(false);
+  const start = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const shell = e.currentTarget.parentElement as HTMLElement;
+    const left = shell.getBoundingClientRect().left;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag(true);
+    const clamp = (x: number) => Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, x - left)));
+    let w = 0;
+    const move = (ev: PointerEvent) => {
+      w = clamp(ev.clientX);
+      shell.style.setProperty("--sidebar-w", `${w}px`);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDrag(false);
+      if (w) void A.updateSettings({ sidebarWidth: w }).catch(A.reportError);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const nudge = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const cur = store.get().settings.sidebarWidth ?? (document.querySelector(".sidebar") as HTMLElement | null)?.offsetWidth ?? 224;
+    const w = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, cur + (e.key === "ArrowRight" ? 16 : -16)));
+    void A.updateSettings({ sidebarWidth: w }).catch(A.reportError);
+  };
+  return (
+    <div
+      className={`sidebar-resizer ${drag ? "dragging" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={start}
+      onDoubleClick={() => void A.updateSettings({ sidebarWidth: null }).catch(A.reportError)}
+      onKeyDown={nudge}
+    />
   );
 }

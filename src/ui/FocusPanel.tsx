@@ -1,6 +1,6 @@
 // Docked focus timer in the sidebar, under Activities. Renders the shared timer; every action goes
 // through the engine (state/focus.ts), exactly like the tray, the floating timer and the popup.
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { ChevronDown, Link2, PictureInPicture2, Play, Pause, RotateCcw, Settings2, SkipForward, Square, Unlink, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
@@ -8,7 +8,8 @@ import * as F from "../state/focus";
 import { clockValue, isBreakStatus, progressValue, suggestBlock, type TimerSnapshot } from "../domain/focus";
 import { fmtClock, fmtTime } from "../domain/format";
 import { isTauri } from "../platform";
-import { CategorySelect } from "./bits";
+import { CatDot, catVars, useOutside } from "./bits";
+import type { Category } from "../domain/types";
 import { currentSnapshot } from "./useFocusEngine";
 import { useState } from "react";
 
@@ -147,35 +148,42 @@ export function FocusPanel() {
 
         <div className="ftp-target">
           {idle ? (
-            linked ? (
-              <div className="ftp-block" title="Time will be recorded against this planned block">
-                <Link2 size={12} />
-                <span className="ftp-block-name">
-                  {linked.block.title || categories.find((c) => c.id === linked.block.categoryId)?.name}
-                  <span className="muted">
-                    {" "}
-                    {linked.when === "soon" ? "starts" : ""} {fmtTime(linked.block.startAt, settings.timeFormat)}–{fmtTime(linked.block.endAt, settings.timeFormat)}
+            <>
+              <CategoryPicker
+                categories={categories}
+                value={idleCat}
+                onChange={(id) => {
+                  setManualCat(id);
+                  if (linked && id !== linked.block.categoryId) setLinkOff(linked.block.id);
+                }}
+              />
+              {linked ? (
+                <div className="ftp-block" title="Time will be recorded against this planned block">
+                  <Link2 size={12} />
+                  <span className="ftp-block-name">
+                    {linked.block.title || categories.find((c) => c.id === linked.block.categoryId)?.name}
+                    <span className="muted">
+                      {" "}
+                      {linked.when === "soon" ? "starts" : ""} {fmtTime(linked.block.startAt, settings.timeFormat)}–{fmtTime(linked.block.endAt, settings.timeFormat)}
+                    </span>
                   </span>
-                </span>
-                <button className="icon-btn sm" onClick={() => setLinkOff(linked.block.id)} aria-label="Don’t link to this block" title="Start without this block">
-                  <Unlink size={12} />
-                </button>
-              </div>
-            ) : (
-              <>
-                <CategorySelect categories={categories.filter((c) => !c.isBreak)} value={idleCat} onChange={setManualCat} />
-                {suggestion && (
-                  <button className="link small ftp-relink" onClick={() => setLinkOff(null)}>
+                  <button className="icon-btn sm" onClick={() => setLinkOff(linked.block.id)} aria-label="Don’t link to this block" title="Start without this block">
+                    <Unlink size={12} />
+                  </button>
+                </div>
+              ) : (
+                suggestion && (
+                  <button className="link small ftp-relink" onClick={() => (setLinkOff(null), setManualCat(null))}>
                     <Link2 size={11} /> Link “{suggestion.block.title || categories.find((c) => c.id === suggestion.block.categoryId)?.name}”
                   </button>
-                )}
-              </>
-            )
+                )
+              )}
+            </>
           ) : onBreak ? (
             <span className="ftp-break-note">{snap.categoryName && snap.status !== "completed" ? snap.categoryName : "Break"}</span>
           ) : (
             <>
-              <CategorySelect categories={categories.filter((c) => !c.isBreak)} value={snap.categoryId ?? defaultCat} onChange={(categoryId) => run(F.setTarget({ categoryId }))} />
+              <CategoryPicker categories={categories} value={snap.categoryId ?? defaultCat} onChange={(categoryId) => run(F.setTarget({ categoryId }))} />
               {snap.blockId && (
                 <div className="ftp-block linked">
                   <Link2 size={12} />
@@ -280,6 +288,70 @@ function Controls({ snap, idle, onStart }: { snap: TimerSnapshot; idle: boolean;
       )}
       <span className="ftp-spacer" />
       {mini}
+    </div>
+  );
+}
+
+/** Category chooser for the panel: an in-page list rather than a native <select>, whose system popup
+ *  closes by itself in the desktop webview while the timer keeps redrawing the panel. */
+export function CategoryPicker(p: { categories: Category[]; value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const options = p.categories.filter((c) => !c.archivedAt && !c.isBreak);
+  const current = p.categories.find((c) => c.id === p.value);
+  const close = useCallback(() => setOpen(false), []);
+  useOutside(ref, open ? close : () => {});
+  const choose = (id: string) => {
+    setOpen(false);
+    if (id !== p.value) p.onChange(id);
+  };
+  const toggle = () => {
+    setHi(Math.max(0, options.findIndex((c) => c.id === p.value)));
+    setOpen(!open);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") (e.preventDefault(), toggle());
+      return;
+    }
+    e.stopPropagation();
+    if (e.key === "Escape") (e.preventDefault(), setOpen(false));
+    else if (e.key === "ArrowDown") (e.preventDefault(), setHi((h) => Math.min(options.length - 1, h + 1)));
+    else if (e.key === "ArrowUp") (e.preventDefault(), setHi((h) => Math.max(0, h - 1)));
+    else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (options[hi]) choose(options[hi].id);
+    }
+  };
+  return (
+    <div className="ftp-cat" ref={ref} style={catVars(current?.color ?? "#888")}>
+      <button type="button" className="cat-select ftp-cat-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Category: ${current?.name ?? "none"}`} onClick={toggle} onKeyDown={onKey}>
+        <CatDot color={current?.color ?? "#888"} />
+        <span className="ftp-cat-name">{current?.name ?? "Choose a category"}</span>
+        <ChevronDown size={12} className="muted" />
+      </button>
+      {open && (
+        <ul className="ftp-cat-list popover" role="listbox" aria-label="Category" onKeyDown={onKey}>
+          {options.map((c, i) => (
+            <li
+              key={c.id}
+              role="option"
+              aria-selected={c.id === p.value}
+              className={`${i === hi ? "hi" : ""} ${c.id === p.value ? "on" : ""}`}
+              onMouseEnter={() => setHi(i)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(c.id)}
+            >
+              <CatDot color={c.color} />
+              <span>
+                {c.parentId ? "↳ " : ""}
+                {c.name}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -252,6 +252,12 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
   mini/popup windows (created hidden, shown with `SW_SHOWNOACTIVATE` so they never take focus), saves the mini position,
   and on Windows checks whether the foreground window covers its monitor (fullscreen) to hide the mini timer and hold the popup.
   All windows share one WebView2 environment, so every window must use the same `additionalBrowserArgs`.
+- **Windows are never built on the main thread.** On Windows, building a WebView2 window from a synchronous command or
+  a menu/window-event handler deadlocks (wry#583). `mini_show`/`popup_show` are async commands and shell-side opens go
+  through `spawn_window`. A still-open popup is reloaded rather than destroyed and rebuilt under the same label.
+- **Sounds play through Web Audio** (fetch + `decodeAudioData`), not `<audio>`, so they don't depend on the webview's
+  media pipeline on the app protocol. The context is resumed on the first click/key.
+- **Desktop test**: `npm run e2e:desktop` drives the release binary with tauri-driver/WebKitWebDriver (Linux, Xvfb).
 - **Sounds** are synthesized by `scripts/make-sounds.mjs` (original, see `public/sounds/LICENSE.txt`). Custom files are
   copied into `<data dir>/sounds` by `import_sound` and read back only from there.
 

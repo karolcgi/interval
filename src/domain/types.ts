@@ -150,6 +150,8 @@ export interface Settings {
   showActualLane: boolean;
   rightPanelOpen: boolean;
   sidebarOpen: boolean;
+  /** Left sidebar width in px; null = the theme's default. */
+  sidebarWidth: number | null;
   defaultBlockMinutes: number;
   timeFormat: "24h" | "12h";
   // Focus (Phase 2)
@@ -218,6 +220,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showActualLane: true,
   rightPanelOpen: true,
   sidebarOpen: true,
+  sidebarWidth: null,
   defaultBlockMinutes: 60,
   timeFormat: "24h",
   pomodoroFocus: 25,
