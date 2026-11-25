@@ -7,6 +7,7 @@ import { canMerge, dragToInterval, layoutColumns, moveInterval, pxToMinute, resi
 import type { Block, Category, Session } from "./types";
 import { fmtClock, fmtDuration, isoLocal } from "./format";
 import { parseCsv, toCsv } from "./csv";
+import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./focus";
 import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
 
 // ------------------------------------------------------------- fixtures
@@ -303,5 +304,21 @@ describe("recurrence rules", () => {
     expect(describeRule("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH")).toBe("Every 2 weeks on Mon, Thu");
     expect(describeRule("FREQ=MONTHLY;BYMONTHDAY=1")).toBe("Monthly on the 1st");
     expect(describeRule("FREQ=DAILY")).toBe("Every day");
+  });
+});
+
+describe("focus transitions", () => {
+  it("flowtime break table", () => {
+    expect([10, 30, 60, 120].map((m) => flowtimeBreakMinutes(m * MINUTE))).toEqual([5, 8, 10, 15]);
+  });
+  it("long break every Nth round", () => {
+    const p = { focus: 25, brk: 5, long: 15, every: 4 };
+    expect([1, 2, 3, 4, 5, 8].map((r) => breakLength(p, r))).toEqual([5, 5, 5, 15, 5, 15]);
+  });
+  it("nothing happens while paused or before the deadline", () => {
+    const f: FocusState = { kind: "pomodoro", phase: "focus", preset: { focus: 25, brk: 5, long: 15, every: 4 }, phaseStart: 0, phaseEnd: 1000, round: 0, pausedRemaining: null, suggestedBreakMin: null, categoryId: "c", tagIds: [], title: null, blockId: null };
+    expect(nextStep(f, 999).type).toBe("none");
+    expect(nextStep({ ...f, pausedRemaining: 5 }, 5000).type).toBe("none");
+    expect(nextStep(f, 1000)).toEqual({ type: "focus-done", at: 1000, breakMinutes: 5, round: 1 });
   });
 });

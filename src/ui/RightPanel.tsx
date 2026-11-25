@@ -10,6 +10,7 @@ import { fmt, fmtClock, fmtDuration, fmtTime } from "../domain/format";
 import { catVars, CategorySelect, Segmented } from "./bits";
 import { TagInput } from "./TagInput";
 import { RepeatSection } from "./RepeatSection";
+import { StartMenuButton } from "./StartMenu";
 import { openExternal } from "../platform";
 import { findMergeCandidate } from "../domain/calendar";
 
@@ -262,9 +263,12 @@ function BlockInspector({ block }: { block: Block }) {
             <Square size={12} fill="currentColor" /> Stop · {fmtClock(now - running!.startAt)}
           </button>
         ) : (
-          <button className="btn btn-cat wide" style={catVars(cat?.color ?? "#888")} onClick={() => void A.startTimer({ blockId: block.id })}>
-            <Play size={12} fill="currentColor" /> Start session
-          </button>
+          <div className="split-start" style={catVars(cat?.color ?? "#888")}>
+            <button className="btn btn-cat wide" onClick={() => void A.startTimer({ blockId: block.id })}>
+              <Play size={12} fill="currentColor" /> Start session
+            </button>
+            <StartMenuButton target={{ blockId: block.id }} className="btn-cat" />
+          </div>
         )}
         {block.status === "planned" && block.startAt < now && (
           <button className="btn btn-outline" onClick={() => void A.completeBlockManually(block.id)} title="Record the planned time as actual, without a timer">

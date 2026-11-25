@@ -120,6 +120,22 @@ export interface Settings {
   sidebarOpen: boolean;
   defaultBlockMinutes: number;
   timeFormat: "24h" | "12h";
+  // Focus (Phase 2)
+  pomodoroFocus: number; // minutes
+  pomodoroBreak: number;
+  pomodoroLongBreak: number;
+  pomodoroLongEvery: number;
+  breakCategoryId: Id | null; // null = first break category
+  breakReminderMinutes: number; // stopwatch: remind to take a break after this long; 0 = off
+  notifications: boolean;
+  sounds: boolean;
+  closeToTray: boolean;
+  // Daily ritual (Phase 2)
+  workdayHours: number; // used by morning planning to show unallocated time
+  reviewPrompts: boolean; // show morning/evening prompts in the day panel
+  // Backups (Phase 2)
+  backupDir: string | null; // null = <data folder>/backups
+  backupKeepDays: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -136,6 +152,19 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarOpen: true,
   defaultBlockMinutes: 60,
   timeFormat: "24h",
+  pomodoroFocus: 25,
+  pomodoroBreak: 5,
+  pomodoroLongBreak: 15,
+  pomodoroLongEvery: 4,
+  breakCategoryId: null,
+  breakReminderMinutes: 90,
+  notifications: true,
+  sounds: true,
+  closeToTray: false,
+  workdayHours: 8,
+  reviewPrompts: true,
+  backupDir: null,
+  backupKeepDays: 30,
 };
 
 /** A half-open interval [start, end) in epoch ms. */

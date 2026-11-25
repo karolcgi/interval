@@ -3,10 +3,12 @@
 
 import { store, type CalendarMode, type PausedTimer, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
+import type { FocusState } from "../domain/focus";
 import * as repo from "../db/repo";
 import type { Block, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { ensureOccurrences } from "./planning";
+import { focusUserStop, nextRound as focusNextRound, setFocusState } from "./focus";
 import { findMergeCandidate, mergedInterval, splitInterval, splitPoint } from "../domain/calendar";
 
 // ------------------------------------------------------------------ helpers
@@ -175,7 +177,8 @@ export async function reloadMeta() {
     repo.listTemplates(d),
     repo.listBudgets(d),
   ]);
-  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets });
+  const focus = await repo.getSetting<FocusState>(d, "timer.focus");
+  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, focus });
 }
 
 // -------------------------------------------------------------- navigation
@@ -517,9 +520,13 @@ export async function deleteSession(id: Id) {
 
 const HEARTBEAT_KEY = "timer.heartbeat";
 
-export async function startTimer(opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode; accumulatedMs?: number } = {}) {
+export async function startTimer(
+  opts: { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null; mode?: SessionMode; accumulatedMs?: number; startAt?: number; keepFocus?: boolean } = {},
+) {
   const s = store.get();
-  const now = Date.now();
+  const now = opts.startAt ?? Date.now();
+  // Starting any timer by hand ends a Pomodoro/Flowtime cycle; the focus engine passes keepFocus.
+  if (!opts.keepFocus && s.focus) await setFocusState(null);
   const block = opts.blockId ? findBlock(opts.blockId) ?? (await repo.getBlock(db(), opts.blockId)) : null;
   const categoryId = opts.categoryId ?? block?.categoryId ?? s.categories.find((c) => !c.archivedAt && !c.isBreak)?.id;
   if (!categoryId) return toast("Create a category first");
@@ -557,7 +564,9 @@ async function stopChanges(at: number): Promise<Change[]> {
   return changes;
 }
 
-export async function stopTimer(at = Date.now()) {
+export async function stopTimer(at = Date.now(), opts: { internal?: boolean } = {}) {
+  // A user stop during Pomodoro/Flowtime goes through the focus engine (suggested breaks etc.).
+  if (!opts.internal && store.get().focus) return focusUserStop(at);
   const s = store.get();
   if (!s.running && s.paused) {
     // Stopping a paused run just clears the pause; the time was already recorded.
@@ -581,21 +590,27 @@ export async function pauseTimer() {
   if (!r) return;
   const now = Date.now();
   const paused: PausedTimer = { categoryId: r.categoryId, blockId: r.blockId, tagIds: r.tagIds, title: r.title, pausedAt: now, accumulatedMs: s.runAccumulatedMs + (now - r.startAt) };
-  await db().batch([...repo.upsertSessionStmts({ ...r, endAt: now, updatedAt: now }), repo.setSettingStmt("timer.paused", paused)]);
-  store.set({ paused });
+  const f = s.focus;
+  const focus = f && f.phaseEnd !== null ? { ...f, pausedRemaining: Math.max(0, f.phaseEnd - now) } : f;
+  await db().batch([...repo.upsertSessionStmts({ ...r, endAt: now, updatedAt: now }), repo.setSettingStmt("timer.paused", paused), repo.setSettingStmt("timer.focus", focus)]);
+  store.set({ paused, focus });
   await refresh();
 }
 
 export async function resumeTimer() {
-  const p = store.get().paused;
+  const { paused: p, focus: f, running } = store.get();
   if (!p) return;
-  await startTimer({ blockId: p.blockId, categoryId: p.categoryId, tagIds: p.tagIds, title: p.title, accumulatedMs: p.accumulatedMs });
+  const now = Date.now();
+  const mode = f ? (f.phase === "break" ? running?.mode ?? f.kind : f.kind) : undefined;
+  await startTimer({ blockId: p.blockId, categoryId: p.categoryId, tagIds: p.tagIds, title: p.title, accumulatedMs: p.accumulatedMs, mode, keepFocus: true });
+  if (f && f.pausedRemaining !== null) await setFocusState({ ...f, phaseEnd: now + f.pausedRemaining, pausedRemaining: null });
 }
 
 export async function toggleTimer() {
   const s = store.get();
   if (s.running) return stopTimer();
   if (s.paused) return resumeTimer();
+  if (s.focus?.phase === "ready") return focusNextRound();
   const sel = s.selection;
   if (sel?.kind === "block") return startTimer({ blockId: sel.id });
   return startTimer({});

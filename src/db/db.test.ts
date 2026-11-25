@@ -9,6 +9,7 @@ import { generateDemoData } from "./fixtures";
 import { store } from "../state/store";
 import * as A from "../state/actions";
 import * as P from "../state/planning";
+import * as F from "../state/focus";
 import { computeStats } from "../domain/stats";
 import { resolveRange, startOfDay, HOUR, MINUTE } from "../domain/time";
 
@@ -351,6 +352,94 @@ describe("timer", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("Pomodoro and Flowtime", () => {
+  const withClock = async (fn: (db: SqlJsDriver) => Promise<void>) => {
+    vi.useFakeTimers();
+    try {
+      const db = await testDb();
+      vi.setSystemTime(t(2026, 11, 25, 9));
+      await boot(db);
+      store.set({ settings: { ...store.get().settings, sounds: false, notifications: false } });
+      await fn(db);
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const all = async (db: SqlJsDriver) => (await repo.listAllSessions(db)).sort((a, b) => a.startAt - b.startAt);
+
+  it("pomodoro: 25 min focus, 5 min break recorded as a break, then waits for the next round", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying"), title: "VEX" }, { focus: 25, brk: 5, long: 15, every: 4 });
+      expect(store.get().running?.mode).toBe("pomodoro");
+      vi.setSystemTime(t(2026, 11, 25, 9, 25) + 30_000);
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("break");
+      expect(store.get().running?.categoryId).toBe(catId("Breaks"));
+      vi.setSystemTime(t(2026, 11, 25, 9, 31));
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("ready");
+      expect(store.get().running).toBeNull();
+      const [focus, brk] = await all(db);
+      expect([focus.startAt, focus.endAt]).toEqual([t(2026, 11, 25, 9), t(2026, 11, 25, 9, 25)]); // exact, not tick time
+      expect([brk.startAt, brk.endAt]).toEqual([t(2026, 11, 25, 9, 25), t(2026, 11, 25, 9, 30)]);
+      expect(focus.title).toBe("VEX");
+      await F.nextRound();
+      expect(store.get().running).toMatchObject({ categoryId: catId("Studying"), title: "VEX", mode: "pomodoro" });
+      expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
+    }));
+
+  it("pomodoro catches up after sleep and gives the long break after every Nth round", () =>
+    withClock(async (db) => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 1 });
+      vi.setSystemTime(t(2026, 11, 25, 11)); // slept through focus end AND break end
+      await F.tickFocus();
+      expect(store.get().focus?.phase).toBe("ready");
+      const [focus, brk] = await all(db);
+      expect(focus.endAt).toBe(t(2026, 11, 25, 9, 25));
+      expect(brk.endAt! - brk.startAt).toBe(15 * MINUTE);
+    }));
+
+  it("pause keeps the remaining time of the round", () =>
+    withClock(async () => {
+      await F.startPomodoro({ categoryId: catId("Studying") }, { focus: 25, brk: 5, long: 15, every: 4 });
+      vi.setSystemTime(t(2026, 11, 25, 9, 10));
+      await A.pauseTimer();
+      expect(store.get().focus?.pausedRemaining).toBe(15 * MINUTE);
+      vi.setSystemTime(t(2026, 11, 25, 10));
+      await F.tickFocus(); // paused: nothing happens
+      expect(store.get().focus?.phase).toBe("focus");
+      await A.resumeTimer();
+      expect(store.get().focus?.phaseEnd).toBe(t(2026, 11, 25, 10, 15));
+      expect(store.get().running?.mode).toBe("pomodoro");
+    }));
+
+  it("flowtime: stop suggests a proportional break; accepting records it and then ends", () =>
+    withClock(async (db) => {
+      await F.startFlowtime({ categoryId: catId("Personal art") });
+      vi.setSystemTime(t(2026, 11, 25, 10, 2));
+      await A.stopTimer();
+      expect(store.get().focus).toMatchObject({ phase: "suggest", suggestedBreakMin: 10 });
+      await F.startSuggestedBreak();
+      expect(store.get().running?.categoryId).toBe(catId("Breaks"));
+      vi.setSystemTime(t(2026, 11, 25, 10, 13));
+      await F.tickFocus();
+      expect(store.get().focus).toBeNull();
+      expect(store.get().running).toBeNull();
+      const [work, brk] = await all(db);
+      expect(work.endAt! - work.startAt).toBe(62 * MINUTE);
+      expect(work.mode).toBe("flowtime");
+      expect(brk.endAt! - brk.startAt).toBe(10 * MINUTE);
+    }));
+
+  it("starting an ordinary timer ends a focus cycle", () =>
+    withClock(async () => {
+      await F.startPomodoro({ categoryId: catId("Studying") });
+      await A.startTimer({ categoryId: catId("Freelance work") });
+      expect(store.get().focus).toBeNull();
+      expect(store.get().running?.mode).toBe("stopwatch");
+    }));
 });
 
 describe("import / export (acceptance #13)", () => {

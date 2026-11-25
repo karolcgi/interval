@@ -2420,3 +2420,137 @@ textarea.field {
   flex: 1;
   min-width: 0;
 }
+
+/* ------------------------------------------------------------ Phase 2: focus */
+.side-timer-row {
+  display: flex;
+  align-items: center;
+}
+.side-timer-row .side-timer {
+  flex: 1;
+}
+.split-start {
+  display: flex;
+  flex: 1;
+  gap: 1px;
+}
+.split-start .btn-cat.wide {
+  border-radius: var(--r-md) 0 0 var(--r-md);
+}
+.split-start .start-more {
+  width: 30px;
+  height: 32px;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  color: color-mix(in oklab, var(--c) 18%, black);
+}
+.start-menu {
+  min-width: 240px;
+}
+.menu-hint {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-4);
+}
+.ft-mode {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+.float-timer {
+  overflow: hidden;
+}
+.float-timer.on-break .ft-pulse {
+  animation-duration: 4s;
+}
+.float-timer.prompt {
+  padding: 6px 6px 6px 14px;
+}
+.ft-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--c);
+  opacity: 0.7;
+  transition: width 1s linear;
+}
+.focus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  animation: fade var(--dur) var(--ease);
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.focus-exit {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+.focus-center {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.focus-phase {
+  color: var(--c-text);
+}
+.focus-name {
+  font-size: var(--fs-lg, 18px);
+  color: var(--text-2);
+  font-weight: 500;
+}
+.focus-clock {
+  font-size: clamp(64px, 14vw, 168px);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text);
+}
+.focus-bar {
+  width: min(420px, 60vw);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--grid);
+  overflow: hidden;
+}
+.focus-bar span {
+  display: block;
+  height: 100%;
+  background: var(--c);
+  transition: width 1s linear;
+}
+.focus-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.float-timer,
+.focus-overlay {
+  --c-text: color-mix(in oklab, var(--c) var(--cat-text-mix), var(--cat-text-base));
+}
+.num-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.field.num {
+  width: 64px;
+  height: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Keep toasts clear of the floating timer */
+.shell:has(.float-timer) .toast {
+  bottom: 74px;
+}

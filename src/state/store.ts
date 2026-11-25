@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { DbDriver } from "../db/driver";
 import type { Block, Budget, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
+import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
@@ -50,6 +51,7 @@ export interface AppState {
   today: { blocks: Block[]; sessions: Session[] };
   running: Session | null;
   paused: PausedTimer | null;
+  focus: FocusState | null; // Pomodoro / Flowtime cycle, persisted as setting timer.focus
   runAccumulatedMs: number; // time from earlier segments of a paused/resumed run
   selection: Selection;
   renaming: Selection; // item whose name is being edited inline on the timeline
@@ -84,6 +86,7 @@ const initial: AppState = {
   today: { blocks: [], sessions: [] },
   running: null,
   paused: null,
+  focus: null,
   runAccumulatedMs: 0,
   selection: null,
   renaming: null,

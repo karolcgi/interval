@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
+import * as F from "../state/focus";
 import { exportData } from "./SettingsView";
 import { fmt, fmtDuration, fmtTime } from "../domain/format";
 import { CatDot } from "./bits";
@@ -49,6 +50,9 @@ function Palette() {
       { id: "cats", label: "Edit categories & tags", run: () => A.setView("categories") },
       { id: "settings", label: "Open settings", run: () => A.setView("settings") },
       { id: "timer", label: s.running ? "Stop timer" : "Start timer", hint: "S", run: A.toggleTimer },
+      { id: "pomodoro", label: "Start Pomodoro", run: () => F.startPomodoro(s.selection?.kind === "block" ? { blockId: s.selection.id } : {}) },
+      { id: "flowtime", label: "Start Flowtime", run: () => F.startFlowtime(s.selection?.kind === "block" ? { blockId: s.selection.id } : {}) },
+      { id: "focus-mode", label: "Focus mode", hint: "F", run: () => store.set({ focusMode: true }) },
       { id: "undo", label: "Undo", hint: "Ctrl Z", run: A.undo },
       { id: "redo", label: "Redo", hint: "Ctrl Y", run: A.redo },
       { id: "theme", label: "Toggle light / dark theme", run: () => A.updateSettings({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" }) },

@@ -11,6 +11,8 @@ import { FloatingTimer } from "./FloatingTimer";
 import { CommandPalette } from "./CommandPalette";
 import { Toasts, SleepGapBanner } from "./Overlays";
 import { useTheme } from "./useTheme";
+import { FocusOverlay } from "./FocusOverlay";
+import { useFocusEngine, useTray } from "./useFocusEngine";
 
 export function App() {
   const ready = useApp((s) => s.ready);
@@ -22,6 +24,8 @@ export function App() {
   useTheme();
   useShortcuts();
   useHeartbeat();
+  useFocusEngine();
+  useTray();
 
   if (fatal)
     return (
@@ -54,6 +58,7 @@ export function App() {
       <SleepGapBanner />
       <CommandPalette />
       <Toasts />
+      <FocusOverlay />
     </div>
   );
 }
@@ -98,6 +103,7 @@ function useShortcuts() {
       if (k === "w") return A.setCalendarMode("week");
       if (k === "m") return A.setCalendarMode("month");
       if (k === "s") return void A.toggleTimer();
+      if (k === "f") return store.set({ focusMode: !s.focusMode });
       if (k === "[") return void A.updateSettings({ sidebarOpen: !s.settings.sidebarOpen });
       if (k === "]") return void A.updateSettings({ rightPanelOpen: !s.settings.rightPanelOpen });
       if (k === "x" && sel?.kind === "block") return void A.splitBlock(sel.id);
