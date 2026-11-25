@@ -47,8 +47,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Interval ${{ github.ref_name }}
+          tagName: v__VERSION__
+          releaseName: Interval v__VERSION__
           releaseBody: |
             Download and run **Interval_*_x64-setup.exe** the first time.
             After that, Interval updates itself: an "Update available" card appears in the sidebar.
