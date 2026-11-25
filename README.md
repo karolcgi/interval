@@ -6,7 +6,7 @@ Not a task manager: tasks and projects stay in Obsidian. Interval answers four q
 1. How do I intend to spend my time today? (the **Plan** lane)
 2. How am I actually spending it? (the **Actual** lane and the timer)
 3. How has my time been distributed over longer periods? (Statistics)
-4. Am I consistently investing in what matters? (Phase 2/3: budgets, progression)
+4. Am I consistently investing in what matters? (budgets, heatmap, daily review)
 
 No account, no network, no cloud. Your data is one SQLite file you own.
 
@@ -32,9 +32,22 @@ No account, no network, no cloud. Your data is one SQLite file you own.
 | Command palette with history search (Ctrl K) | ✅ |
 | Demo data in a separate database | ✅ |
 
-Phase 2 (budgets, Pomodoro/Flowtime, recurrence, templates, daily review, heatmaps, tray timer controls)
-and Phase 3 (progression, achievements, Obsidian Markdown export) are planned. Their tables already exist in
-the schema. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
+## Phase 2 status
+
+| Area | State |
+|---|---|
+| Name every block, category picked separately; colour always follows the category | ✅ |
+| Recurring blocks (daily, weekdays, weekly on chosen days, every N weeks, monthly), edit this or this-and-following, stop repeating | ✅ |
+| Day templates: save a day, apply to any day (undoable), replace, rename | ✅ |
+| Pomodoro (presets + custom), Flowtime (break suggested from focus length), focus mode (F), break reminders, system notifications | ✅ |
+| Tray timer: status in the tray tooltip and menu, start/stop/Pomodoro/Flowtime from the tray, optional close to tray | ✅ |
+| Time budgets: minimum targets and maximum limits per category or tag, daily/weekly/monthly/yearly/lifetime, history | ✅ |
+| Morning planning and evening review, daily intention and reflection | ✅ |
+| Analytics: 12-month heatmap, planned vs recorded, cumulative hours | ✅ |
+| Automatic daily backups to a folder you choose, configurable retention, Back up now | ✅ |
+
+Phase 3 (progression, achievements, Obsidian Markdown export) is next.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 
 ---
 
@@ -106,9 +119,9 @@ because the build also produces the signed update package. Normally CI does this
 ### Tests
 
 ```powershell
-npm test               # 48 unit + integration tests (domain logic and real SQLite)
+npm test               # 74 unit + integration tests (domain logic and real SQLite)
 npx playwright install chromium   # once
-npm run e2e            # the full Phase 1 acceptance workflow, driven through the UI
+npm run e2e            # Phase 1 acceptance + Phase 2 workflow, driven through the UI
 npm run typecheck
 ```
 
@@ -119,12 +132,12 @@ npm run typecheck
 | | Path |
 |---|---|
 | Database | `%APPDATA%\app.interval.desktop\interval.db` (change it in Settings › Data folder) |
-| Daily backups | `<data folder>\backups\interval-YYYY-MM-DD.db` (last 14 kept) |
+| Daily backups | `<data folder>\backups\interval-YYYY-MM-DD.db` by default, or the folder set in Settings › Data (last 30 kept by default) |
 | Demo database | `<data folder>\interval-demo.db` (never mixed with your records) |
 
 The database is plain SQLite: open it with any SQLite tool. Export from Settings › Data:
 
-- **JSON**: complete and lossless (categories, tags, plans, sessions, notes, settings). Re-importable.
+- **JSON**: complete and lossless (categories, tags, plans, sessions, notes, settings, recurring rules, templates, budgets). Re-importable.
 - **CSV**: one row per planned block and per recorded session, with local times and UTC offsets.
 
 To move to a new machine: copy `interval.db` (or import a JSON export).
@@ -146,6 +159,15 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
   Details (title, tags, link, notes, times) are in the right panel. Links like `obsidian://open?vault=…`
   open Obsidian directly.
 - **Review**: Statistics. Click a bar or a category to see the underlying entries; click an entry to jump to it.
+
+- **Repeat**: select a block, Details › Repeat. Change an occurrence, then "Apply changes to following" to move the
+  rest of the series. Deleting one occurrence never brings it back.
+- **Templates**: the template button in the calendar header saves the current day or applies a saved one.
+- **Focus**: the ▾ next to Start offers Pomodoro presets and Flowtime. **F** toggles focus mode. Breaks are recorded
+  in your break category, so they show up honestly in statistics.
+- **Budgets**: sidebar › Time budgets. "At least 7 h Studying a week", "at most 1 h of Admin a day". Progress counts recorded time;
+  planned time still ahead shows whether you're on track.
+- **Daily ritual**: the details panel suggests planning in the morning and a review in the evening (turn it off in Settings).
 
 Keyboard reference: Settings › Keyboard, or Ctrl K.
 

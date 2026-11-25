@@ -200,12 +200,12 @@ function BudgetRow({ b, progress, history }: { b: Budget; progress: BudgetProgre
         <span className="spacer" />
         <label className="nb-field">
           <span className="muted small">min</span>
-          <input className="field num bare" value={min} placeholder="–" onChange={(e) => setMin(e.target.value)} onBlur={commitMin} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Target hours" />
+          <input className="field num bare" value={min} placeholder="–" onChange={(e) => setMin(e.target.value)} onBlur={commitMin} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label={`${targetName(b, categories, tags)} target hours`} />
         </label>
         {b.period !== "lifetime" && (
           <label className="nb-field">
             <span className="muted small">max</span>
-            <input className="field num bare" value={max} placeholder="–" onChange={(e) => setMax(e.target.value)} onBlur={commitMax} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Limit hours" />
+            <input className="field num bare" value={max} placeholder="–" onChange={(e) => setMax(e.target.value)} onBlur={commitMax} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label={`${targetName(b, categories, tags)} limit hours`} />
           </label>
         )}
         <button className="icon-btn sm danger" onClick={() => void A.deleteBudget(b.id).catch(A.reportError)} aria-label="Delete budget" title="Delete budget">

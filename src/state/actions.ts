@@ -669,3 +669,23 @@ export async function resolveSleepGap(choice: "keep" | "exclude" | "stop") {
   store.set({ runAccumulatedMs: acc });
   await refresh();
 }
+
+// ------------------------------------------------------------------ backups
+
+/**
+ * Daily rolling backup into settings.backupDir (default: `backups` beside the database).
+ * `force` re-writes today's copy and confirms with a toast. Desktop only; never throws.
+ */
+export async function backupNow(force = true): Promise<string | null> {
+  if (store.get().db?.kind !== "tauri") return null;
+  const s = store.get().settings;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const path = await invoke<string | null>("db_backup_daily", { keep: Math.max(1, s.backupKeepDays), dir: s.backupDir, force });
+    if (force && path) toast(`Backed up to ${path}`);
+    return path;
+  } catch (e) {
+    reportError(e);
+    return null;
+  }
+}

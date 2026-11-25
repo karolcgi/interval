@@ -176,7 +176,7 @@ export function SettingsView() {
 
       <h2 className="section-title">Data</h2>
       <div className="settings-block">
-        <Row label="Database" hint={isTauri() ? "Local SQLite file. A rolling daily backup (last 14 days) is written to a backups folder beside it." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>
+        <Row label="Database" hint={isTauri() ? "Local SQLite file." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>
           <code className="path">{storage}</code>
           {isTauri() && (
             <button className="icon-btn" onClick={() => void revealDataFolder(storage.replace(/^.*?:/, ""))} title="Show in Explorer">
@@ -194,6 +194,27 @@ export function SettingsView() {
                 Use default
               </button>
             )}
+          </Row>
+        )}
+        {isTauri() && (
+          <Row label="Automatic backups" hint={`A copy of the database once a day, the newest ${s.backupKeepDays} kept. ${s.backupDir ? "Custom folder." : "Default: a backups folder beside the database."} Point it at a synced folder (Dropbox, OneDrive) for an off-machine copy.`}>
+            <code className="path">{s.backupDir ?? "backups/ beside the database"}</code>
+            <button className="btn btn-outline sm" onClick={() => void pickDirectory().then((backupDir) => backupDir && set({ backupDir }))}>
+              Change…
+            </button>
+            {s.backupDir && (
+              <button className="btn btn-ghost sm" onClick={() => set({ backupDir: null })}>
+                Use default
+              </button>
+            )}
+          </Row>
+        )}
+        {isTauri() && (
+          <Row label="Keep backups" hint="Older copies in that folder are deleted">
+            <NumField label="Backups to keep" value={s.backupKeepDays} min={1} max={365} onChange={(backupKeepDays) => set({ backupKeepDays })} suffix="days" />
+            <button className="btn btn-outline sm" onClick={() => void A.backupNow(true)}>
+              Back up now
+            </button>
           </Row>
         )}
         <Row label="Export" hint="JSON is a complete backup. CSV is one row per planned or recorded entry.">
