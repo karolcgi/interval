@@ -6,6 +6,7 @@ import { TauriDriver } from "./db/tauri-driver";
 import { bootPrefs, isTauri } from "./platform";
 import { store } from "./state/store";
 import { backupNow, checkSleepOnStartup, refresh, reloadMeta } from "./state/actions";
+import { initEngine } from "./state/focus";
 
 /**
  * Real records and demo records live in different databases:
@@ -43,6 +44,7 @@ export async function boot() {
     await reloadMeta();
     await refresh();
     await checkSleepOnStartup();
+    await initEngine();
     store.set({ ready: true });
     if (db.kind === "tauri") {
       // Daily rolling backup to the configured folder. Failure is reported but never blocks the app.

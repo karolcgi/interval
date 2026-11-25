@@ -54,6 +54,7 @@ export interface AppState {
   paused: PausedTimer | null;
   focus: FocusState | null; // Pomodoro / Flowtime cycle, persisted as setting timer.focus
   runAccumulatedMs: number; // time from earlier segments of a paused/resumed run
+  lastAlive: number | null; // last moment the timer engine ran (sleep / closed-app detection)
   selection: Selection;
   renaming: Selection; // item whose name is being edited inline on the timeline
   undoDepth: number;
@@ -66,6 +67,9 @@ export interface AppState {
   focusMode: boolean;
   ritual: { kind: "plan" | "review"; day: number } | null; // morning planning / evening review overlay
   update: { version: string; notes: string | null; progress: number | null } | null;
+  completionPopup: number | null; // browser preview: show the completion card in the app
+  globalShortcutErrors: string[]; // system-wide shortcuts another app already owns
+  settingsAnchor: string | null; // section to scroll to when Settings opens
 }
 
 const initial: AppState = {
@@ -91,6 +95,7 @@ const initial: AppState = {
   paused: null,
   focus: null,
   runAccumulatedMs: 0,
+  lastAlive: null,
   selection: null,
   renaming: null,
   undoDepth: 0,
@@ -103,6 +108,9 @@ const initial: AppState = {
   focusMode: false,
   ritual: null,
   update: null,
+  completionPopup: null,
+  globalShortcutErrors: [],
+  settingsAnchor: null,
 };
 
 type Listener = () => void;

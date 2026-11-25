@@ -86,7 +86,7 @@ try {
   ok("Monthly review and year in review with skills gained and milestones");
 
   // --------------------------------------------------------------- shortcuts
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Shortcut for Jump to today" }).click();
   await page.keyboard.press("g");
   await expectText(page.getByRole("button", { name: "Shortcut for Jump to today" }), /^G$/, "rebound to G");

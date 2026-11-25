@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { CalendarDays, CalendarRange, ChartNoAxesColumn, Gauge, NotebookText, TrendingUp, Play, Settings2, Shapes, Sun, Square } from "lucide-react";
+import { CalendarDays, CalendarRange, ChartNoAxesColumn, Gauge, NotebookText, TrendingUp, Settings2, Shapes, Sun } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
-import { StartMenuButton } from "./StartMenu";
+import { FocusPanel } from "./FocusPanel";
 import { MiniCalendar } from "./MiniCalendar";
 import { computeStats } from "../domain/stats";
 import { addDays, isSameDay, startOfDay } from "../domain/time";
@@ -15,8 +15,6 @@ export function Sidebar() {
   const date = useApp((s) => s.date);
   const categories = useApp((s) => s.categories);
   const today = useApp((s) => s.today);
-  const running = useApp((s) => s.running);
-  const paused = useApp((s) => s.paused);
   const update = useApp((s) => s.update);
   const now = useNow(30_000);
   const isTodayView = view === "calendar" && mode === "day" && isSameDay(date, now);
@@ -67,6 +65,8 @@ export function Sidebar() {
         </ul>
       </div>
 
+      <FocusPanel />
+
       <div className="side-foot">
         {update && (
           <div className="update-card">
@@ -88,18 +88,6 @@ export function Sidebar() {
           <span className="today-chip-val">{fmtDuration(totals.recordedMs)}</span>
           <span className="today-chip-sub">of {fmtDuration(totals.plannedMs)} planned</span>
         </div>
-        {running || paused ? (
-          <button className="btn btn-ghost side-timer" onClick={() => void A.stopTimer()}>
-            <Square size={13} /> Stop timer
-          </button>
-        ) : (
-          <div className="side-timer-row">
-            <button className="btn btn-ghost side-timer" onClick={() => void A.startTimer({})} title="Start an unscheduled session (S)">
-              <Play size={13} /> Start timer
-            </button>
-            <StartMenuButton target={{}} />
-          </div>
-        )}
         <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => A.setView("settings")}>
           <Settings2 size={15} />
           <span>Settings</span>

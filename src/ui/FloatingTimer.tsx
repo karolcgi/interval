@@ -19,7 +19,7 @@ export function FloatingTimer() {
   const now = useNow(1000);
 
   if (!running && !paused) {
-    if (focus?.phase === "ready" || focus?.phase === "suggest") return <FocusPrompt focus={focus} />;
+    if (focus?.phase === "ready" || focus?.phase === "suggest" || focus?.phase === "done") return <FocusPrompt focus={focus} />;
     return null;
   }
 
@@ -28,7 +28,7 @@ export function FloatingTimer() {
   const cat = categories.find((c) => c.id === catId);
   const left = focus ? remaining(focus, now) : null;
   const isBreak = focus?.phase === "break";
-  const progress = focus && focus.phaseEnd !== null && left !== null ? 1 - left / Math.max(1, focus.phaseEnd - focus.phaseStart) : null;
+  const progress = focus && focus.phaseMs && left !== null ? 1 - left / focus.phaseMs : null;
 
   return (
     <div className={`float-timer ${paused && !running ? "paused" : ""} ${isBreak ? "on-break" : ""}`} style={catVars(cat?.color ?? "#888")} role="status" aria-live="polite">
@@ -68,7 +68,7 @@ export function FloatingTimer() {
       <button className="icon-btn" onClick={() => store.set({ focusMode: true })} aria-label="Focus mode" title="Focus mode (F)">
         <Maximize2 size={13} />
       </button>
-      <button className="icon-btn ft-stop" onClick={() => run(isBreak ? F.endFocus() : A.stopTimer())} aria-label="Stop" title="Stop (S)">
+      <button className="icon-btn ft-stop" onClick={() => run(isBreak ? F.endFocus() : A.stopTimer())} aria-label="Stop" title="Stop">
         <Square size={12} fill="currentColor" />
       </button>
       {progress !== null && <span className="ft-progress" style={{ width: `${Math.min(100, progress * 100)}%` }} />}
@@ -80,11 +80,11 @@ export function FloatingTimer() {
 function FocusPrompt({ focus }: { focus: FocusState }) {
   const categories = useApp((s) => s.categories);
   const cat = categories.find((c) => c.id === focus.categoryId);
-  const ready = focus.phase === "ready";
+  const ready = focus.phase === "ready" || focus.phase === "done";
   return (
     <div className="float-timer prompt" style={catVars(cat?.color ?? "#888")} role="status" aria-live="polite">
-      <span className="ft-mode">{ready ? "Break over" : "Flowtime"}</span>
-      <span className="ft-name">{ready ? `Round ${focus.round + 1} · ${focus.title || cat?.name}` : `Suggested break · ${focus.suggestedBreakMin} min`}</span>
+      <span className="ft-mode">{focus.phase === "done" ? "Cycle complete" : ready ? "Break over" : focus.kind === "flowtime" ? "Flowtime" : "Focus complete"}</span>
+      <span className="ft-name">{ready ? `Round ${focus.phase === "done" ? 1 : (focus.round % Math.max(1, focus.preset.every)) + 1} · ${focus.title || cat?.name}` : `Suggested break · ${focus.suggestedBreakMin} min`}</span>
       {ready ? (
         <button className="btn btn-cat sm" onClick={() => run(F.nextRound())}>
           <Play size={11} fill="currentColor" /> Start round

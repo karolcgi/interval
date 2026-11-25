@@ -1,3 +1,5 @@
+import { DEFAULT_FOCUS_PRESETS, type FocusPreset } from "./focus";
+
 // Core domain types. All timestamps are UTC epoch milliseconds.
 // `tz` records the IANA zone the user was in when the record was created,
 // so history stays interpretable after travel or DST changes.
@@ -96,6 +98,25 @@ export interface PersonalAchievement {
   createdAt: number;
 }
 
+/** One focus or break phase run by the focus timer (history for focus statistics). */
+export interface FocusRun {
+  id: Id;
+  cycleId: Id;
+  kind: "pomodoro" | "flowtime" | "stopwatch";
+  phase: "focus" | "short_break" | "long_break";
+  round: number; // 1-based focus round within the cycle (breaks carry the round they follow)
+  startedAt: number;
+  endedAt: number | null; // null while running or paused
+  plannedMs: number | null; // countdown length incl. extensions
+  activeMs: number; // time spent, pauses excluded
+  outcome: "completed" | "skipped" | "stopped" | null;
+  endsCycle: boolean; // this focus round completed a Pomodoro cycle
+  categoryId: Id | null;
+  blockId: Id | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface TemplateBlock {
   id: Id;
   startMinute: number; // local minute of day
@@ -155,6 +176,34 @@ export interface Settings {
   obsidianAuto: boolean; // write yesterday's log and last week's summary automatically
   // Personalization (Phase 3)
   shortcuts: Record<string, string>; // action id -> key (overrides of the defaults)
+  // Focus timer (v0.4)
+  focusPresets: FocusPreset[]; // quick presets shown in the timer panel (built-ins + your own)
+  focusTimerMode: "pomodoro" | "stopwatch" | "flowtime"; // mode selected in the panel
+  focusPanelOpen: boolean; // docked panel expanded
+  focusAutoBreak: boolean; // start breaks automatically when a focus round ends
+  focusAutoFocus: boolean; // start the next focus round automatically when a break ends
+  focusRecordBreaks: boolean; // record breaks as sessions in the break category
+  focusNotify: "silent" | "system" | "popup";
+  focusPopupTakesFocus: boolean; // the completion popup may take keyboard focus
+  focusPopupOverFullscreen: boolean; // show the popup over fullscreen apps
+  soundVolume: number; // master 0..1
+  soundEvents: Record<SoundEvent, SoundSetting>;
+  miniAuto: boolean; // show the floating timer when Interval is minimized and a timer is active
+  miniOnTop: boolean;
+  miniOpacity: number; // 0.4..1
+  miniClickThrough: boolean;
+  miniLayout: "standard" | "compact";
+  miniHideFullscreen: boolean;
+  miniPos: { x: number; y: number } | null; // physical pixels, virtual desktop coordinates
+  minimizeToTray: boolean; // minimizing hides Interval to the tray
+  globalShortcuts: Record<string, string>; // action -> accelerator, e.g. "Ctrl+Alt+Shift+P"; "" = off
+}
+
+export type SoundEvent = "focusStart" | "focusEnd" | "breakStart" | "breakEnd" | "cycleEnd";
+export interface SoundSetting {
+  on: boolean;
+  volume: number; // 0..1, multiplied by the master volume
+  file: string | null; // imported custom sound (path inside the data folder); null = bundled sound
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -189,6 +238,32 @@ export const DEFAULT_SETTINGS: Settings = {
   obsidianDir: null,
   obsidianAuto: false,
   shortcuts: {},
+  focusPresets: DEFAULT_FOCUS_PRESETS,
+  focusTimerMode: "pomodoro",
+  focusPanelOpen: true,
+  focusAutoBreak: true,
+  focusAutoFocus: false,
+  focusRecordBreaks: true,
+  focusNotify: "popup",
+  focusPopupTakesFocus: false,
+  focusPopupOverFullscreen: false,
+  soundVolume: 0.6,
+  soundEvents: {
+    focusStart: { on: true, volume: 0.7, file: null },
+    focusEnd: { on: true, volume: 1, file: null },
+    breakStart: { on: false, volume: 0.7, file: null },
+    breakEnd: { on: true, volume: 1, file: null },
+    cycleEnd: { on: true, volume: 1, file: null },
+  },
+  miniAuto: true,
+  miniOnTop: true,
+  miniOpacity: 0.94,
+  miniClickThrough: false,
+  miniLayout: "standard",
+  miniHideFullscreen: true,
+  miniPos: null,
+  minimizeToTray: false,
+  globalShortcuts: { toggle: "Ctrl+Alt+Shift+Space", mini: "Ctrl+Alt+Shift+M", clickThrough: "Ctrl+Alt+Shift+T" },
 };
 
 /** A half-open interval [start, end) in epoch ms. */

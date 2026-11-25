@@ -88,10 +88,10 @@ try {
   // 5-6. Start a focus session from the block at 15:10, stop at 16:20
   await page.clock.setSystemTime(local(2026, 11, 25, 15, 10));
   await page.locator(".insp-actions").getByRole("button", { name: /Start session/ }).click();
-  await page.locator(".float-timer").waitFor();
+  await page.locator(".focus-panel.is-running").waitFor();
   await page.clock.setSystemTime(local(2026, 11, 25, 16, 20));
   await page.clock.runFor(1500);
-  await page.locator(".float-timer").getByRole("button", { name: "Stop" }).click();
+  await page.locator(".focus-panel").getByRole("button", { name: "Stop", exact: true }).click();
   await expectText(page.locator(".toast"), /Recorded 70 min/, "70 minutes recorded");
   ok("Session started from the block and stopped: 70 min recorded");
 
@@ -168,7 +168,7 @@ try {
   ok("Both blocks persisted across reload");
 
   // 13. Export
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV" }).click()]);
   const csvPath = new URL("export.csv", OUT).pathname;
   await dl.saveAs(csvPath);

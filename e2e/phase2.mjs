@@ -131,12 +131,14 @@ try {
 
   // --------------------------------------------------------------- focus modes
   await page.keyboard.press("t");
-  await page.locator(".side-timer-row").getByLabel("Timer modes").click();
-  await page.getByRole("menuitem", { name: /Pomodoro 25\/5/ }).click();
-  await expectText(page.locator(".float-timer .ft-mode"), /Pomodoro 1/, "pomodoro running");
-  await expectText(page.locator(".ft-clock"), /25:00|24:5\d/, "countdown");
+  const panel = page.locator(".focus-panel");
+  await panel.getByRole("tab", { name: "Pomodoro" }).click();
+  await panel.locator(".ftp-presets").getByRole("button", { name: /^25/ }).click();
+  await panel.getByRole("button", { name: "Start", exact: true }).click();
+  await expectText(panel.locator(".ftp-label"), /Focus 1 of 4/, "pomodoro running");
+  await expectText(panel.locator(".ftp-clock"), /25:00|24:5\d/, "countdown");
   await page.clock.runFor(25 * 60_000 + 2000);
-  await expectText(page.locator(".float-timer .ft-mode"), /Break/, "break phase");
+  await expectText(panel.locator(".ftp-label"), /Short break/, "break phase starts by itself");
   await page.keyboard.press("f");
   await page.locator(".focus-overlay").waitFor();
   await expectText(page.locator(".focus-clock"), /0[45]:\d\d/, "focus overlay shows the break countdown");
@@ -144,25 +146,29 @@ try {
   await page.keyboard.press("Escape");
   await page.locator(".focus-overlay").waitFor({ state: "detached" });
   await page.clock.runFor(5 * 60_000 + 2000);
-  await expectText(page.locator(".float-timer.prompt"), /Break over.*Round 2/, "break over prompt");
+  await expectText(panel.locator(".ftp-label"), /Break over/, "break over");
+  await expectText(panel.locator(".ftp-next"), /Focus 2 of 4/, "next round announced");
   await shot("phase2-break-over");
-  await page.getByRole("button", { name: "Start round" }).click();
-  await expectText(page.locator(".float-timer .ft-mode"), /Pomodoro 2/, "round 2");
-  await page.locator(".float-timer").getByRole("button", { name: "Stop" }).click();
-  await page.locator(".float-timer").waitFor({ state: "detached" });
+  await panel.getByRole("button", { name: "Next round" }).click();
+  await expectText(panel.locator(".ftp-label"), /Focus 2 of 4/, "round 2");
+  await panel.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
   ok("Pomodoro 25/5: focus, break (recorded), focus mode, break over, round 2, stop");
 
-  await page.locator(".side-timer-row").getByLabel("Timer modes").click();
-  await page.getByRole("menuitem", { name: /Flowtime/ }).click();
-  await expectText(page.locator(".float-timer .ft-mode"), /Flowtime/, "flowtime running");
+  await panel.getByRole("tab", { name: "Flowtime" }).click();
+  await panel.getByRole("button", { name: "Start", exact: true }).click();
+  await expectText(panel.locator(".ftp-label"), /Flowtime/, "flowtime running");
   await page.clock.runFor(62 * 60_000);
-  await page.locator(".float-timer").getByRole("button", { name: "Stop" }).click();
-  await expectText(page.locator(".float-timer.prompt"), /Suggested break · 10 min/, "flowtime suggestion");
-  await page.getByRole("button", { name: "Take break" }).click();
-  await expectText(page.locator(".float-timer .ft-mode"), /Break/, "flowtime break");
+  await panel.getByRole("button", { name: "Stop", exact: true }).click();
+  await expectText(panel.locator(".ftp-next"), /Break · 10 min/, "flowtime suggestion");
+  await panel.getByRole("button", { name: "Start break" }).click();
+  await expectText(panel.locator(".ftp-label"), /Short break/, "flowtime break");
   await page.clock.runFor(10 * 60_000 + 2000);
-  await page.locator(".float-timer").waitFor({ state: "detached" });
-  ok("Flowtime: 62 min focus, stop suggests 10 min break, break ends by itself");
+  await panel.getByRole("button", { name: "Finish" }).click();
+  await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
+  await expectText(panel.locator(".ftp-clock"), /--:--|00:00|\d\d:\d\d/, "panel back to idle");
+  await panel.getByRole("tab", { name: "Pomodoro" }).click();
+  ok("Flowtime: 62 min focus, stop suggests 10 min break, break ends, finish");
 
   // ------------------------------------------------------------------- budgets
   await page.getByRole("button", { name: "Time budgets" }).click();

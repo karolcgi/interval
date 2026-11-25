@@ -27,6 +27,8 @@ Starting point: the original "Interval" mockup (dark, warm greys, pastel categor
 | `--text` / `-2` / `-3` / `-4` | #ecece7 → #75767c | #1c1c1e → #9a9aa0 | four text levels |
 | `--now` | #e79b8b | #d4604a | current time |
 | `--accent` | user-defined, default #d5d3ca | | focus, selection |
+| `--focus` | #e79b8b | #cf6a55 | focus timer: focus phase (salmon) |
+| `--break` | #93b59d | #4f8d6a | focus timer: breaks (muted green) |
 
 Category defaults: Freelance #8298d7 · Studying #8bbca0 · Personal art #ba9ad0 · Creative research #77b3bf ·
 Asset development #d49a72 · Administration #c6ae76 · Personal time #9a9ba2 · Breaks #6c6d73.

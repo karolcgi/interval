@@ -2,7 +2,7 @@
 // Mutation helpers return Statement[] so callers can compose atomic batches.
 
 import type { DbDriver, Statement } from "./driver";
-import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
+import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, FocusRun, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 
@@ -452,4 +452,50 @@ export function upsertAchievementStmt(a: PersonalAchievement): Statement {
 
 export function deleteAchievementStmt(id: Id): Statement {
   return { sql: "DELETE FROM achievements WHERE id = ?", params: [id] };
+}
+
+// -------------------------------------------------------------- focus runs
+
+function toFocusRun(r: Row): FocusRun {
+  return {
+    id: String(r.id),
+    cycleId: String(r.cycle_id),
+    kind: String(r.kind) as FocusRun["kind"],
+    phase: String(r.phase) as FocusRun["phase"],
+    round: Number(r.round),
+    startedAt: Number(r.started_at),
+    endedAt: num(r.ended_at),
+    plannedMs: num(r.planned_ms),
+    activeMs: Number(r.active_ms ?? 0),
+    outcome: (str(r.outcome) as FocusRun["outcome"]) ?? null,
+    endsCycle: Number(r.ends_cycle) === 1,
+    categoryId: str(r.category_id),
+    blockId: str(r.block_id),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+/** Focus runs that started in [start, end). */
+export async function listFocusRuns(db: DbDriver, start: number, end: number): Promise<FocusRun[]> {
+  return (await db.select<Row>("SELECT * FROM focus_runs WHERE started_at < ? AND started_at >= ? ORDER BY started_at", [end, start])).map(toFocusRun);
+}
+
+export async function listAllFocusRuns(db: DbDriver): Promise<FocusRun[]> {
+  return (await db.select<Row>("SELECT * FROM focus_runs ORDER BY started_at")).map(toFocusRun);
+}
+
+export function upsertFocusRunStmt(f: FocusRun): Statement {
+  return {
+    sql: `INSERT INTO focus_runs (id, cycle_id, kind, phase, round, started_at, ended_at, planned_ms, active_ms, outcome, ends_cycle, category_id, block_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET ended_at=excluded.ended_at, planned_ms=excluded.planned_ms, active_ms=excluded.active_ms,
+            outcome=excluded.outcome, ends_cycle=excluded.ends_cycle, category_id=excluded.category_id, block_id=excluded.block_id,
+            round=excluded.round, updated_at=excluded.updated_at`,
+    params: [f.id, f.cycleId, f.kind, f.phase, f.round, f.startedAt, f.endedAt, f.plannedMs, Math.round(f.activeMs), f.outcome, f.endsCycle ? 1 : 0, f.categoryId, f.blockId, f.createdAt, f.updatedAt],
+  };
+}
+
+export function deleteFocusRunStmt(id: Id): Statement {
+  return { sql: "DELETE FROM focus_runs WHERE id = ?", params: [id] };
 }
