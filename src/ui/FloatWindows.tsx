@@ -6,10 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import { AppWindow, Pause, Pencil, Pin, PinOff, Play, SmilePlus, Square, Trash2, X } from "lucide-react";
 import { clockValue, isBreakStatus, progressValue, type TimerSnapshot } from "../domain/focus";
 import { fmtClock, fmtDuration } from "../domain/format";
-import { closeWindow, miniExpand, onSnapshot, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
+import { closeWindow, miniExpand, onSnapshot, popupFit, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
 import type { TimerCommand } from "../state/focus";
 import { isTauri } from "../platform";
 import { AbandonConfirm, CycleDots } from "./FocusPanel";
+import { AnnotateBox } from "./Annotate";
 import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
 
 function useBroadcast(): TimerBroadcast | null {
@@ -295,7 +296,7 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
 // ------------------------------------------------------------------------ completion popup
 
 /** What the popup offers after a focus round or a break ends. Shared by the popup window and the in-app card. */
-export function CompletionCard({ snap, send, onClose }: { snap: TimerSnapshot; send: (cmd: TimerCommand) => void; onClose: () => void }) {
+export function CompletionCard({ snap, send, onClose, annotate = false }: { snap: TimerSnapshot; send: (cmd: TimerCommand) => void; onClose: () => void; annotate?: boolean }) {
   const c = snap.completed;
   if (!c) return null;
   const afterFocus = c.phase === "focus";
@@ -329,6 +330,7 @@ export function CompletionCard({ snap, send, onClose }: { snap: TimerSnapshot; s
               ? "That was the long break. Start a new cycle when you’re ready."
               : `Next · ${snap.next ?? "focus"}`}
       </div>
+      {afterFocus && annotate && <AnnotateBox key={c.runId} completed={c} send={send} />}
       <div className="cc-actions">
         {afterFocus ? (
           <>
@@ -387,10 +389,24 @@ export function PopupApp() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // Fit the window to the card (taller with the "what did you get done?" box).
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = root.current?.querySelector(".completion-card");
+    if (!card || typeof ResizeObserver === "undefined") return;
+    let last = 0;
+    const ro = new ResizeObserver(() => {
+      const r = card.getBoundingClientRect();
+      const h = Math.ceil(r.bottom + Math.max(0, r.top)); // the root's padding, mirrored below the card
+      if (Math.abs(h - last) > 2) (last = h), void popupFit(h);
+    });
+    ro.observe(card);
+    return () => ro.disconnect();
+  }, [!!snap]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!snap) return <div className="float-root popup" />;
   return (
-    <div className="float-root popup" style={{ ["--float-opacity" as string]: "1" }}>
-      <CompletionCard snap={snap} send={(cmd) => sendCommand(cmd, snap.rev)} onClose={close} />
+    <div ref={root} className="float-root popup" style={{ ["--float-opacity" as string]: "1" }}>
+      <CompletionCard snap={snap} send={(cmd) => sendCommand(cmd, typeof cmd === "string" ? snap.rev : null)} onClose={close} annotate={snap.ui.annotate} />
     </div>
   );
 }

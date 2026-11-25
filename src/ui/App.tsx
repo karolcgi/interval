@@ -221,7 +221,7 @@ function InAppCompletion() {
   const snap = currentSnapshot();
   return (
     <div className="in-app-completion">
-      <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} />
+      <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} annotate={store.get().settings.annotatePrompt} />
     </div>
   );
 }

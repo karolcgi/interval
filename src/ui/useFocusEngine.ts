@@ -70,6 +70,7 @@ function broadcastOf(s: AppState): TimerBroadcast {
       onTop: s.settings.miniOnTop,
       categories: s.categories.filter((c) => !c.archivedAt && !c.isBreak).map((c) => ({ id: c.id, name: c.name, color: c.color, icon: c.emoji ?? null })),
       focusMin: s.settings.pomodoroFocus,
+      annotate: s.settings.annotatePrompt,
       mode: s.settings.focusTimerMode,
     },
   };

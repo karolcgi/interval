@@ -66,6 +66,22 @@ export interface Session {
   updatedAt: number;
 }
 
+/** Creative diary (v0.6): a note the user typed when a focus round ended, or later on a recorded entry.
+ *  Facts the user wrote; never generated. */
+export type EntryKind = "note" | "learning" | "idea" | "accomplishment" | "milestone";
+export const ENTRY_KINDS: EntryKind[] = ["note", "learning", "idea", "accomplishment", "milestone"];
+export interface JournalEntry {
+  id: Id;
+  at: number; // when it happened (the session end for an annotation)
+  kind: EntryKind;
+  text: string;
+  sessionId: Id | null; // the session it belongs to
+  blockId: Id | null;
+  source: "capture" | "annotation" | "manual";
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface DailyNote {
   date: string; // YYYY-MM-DD in local calendar
   intention: string | null;
@@ -201,6 +217,8 @@ export interface Settings {
   miniPos: { x: number; y: number } | null; // physical pixels, virtual desktop coordinates
   minimizeToTray: boolean; // minimizing hides Interval to the tray
   globalShortcuts: Record<string, string>; // action -> accelerator, e.g. "Ctrl+Alt+Shift+P"; "" = off
+  // Creative diary (v0.6)
+  annotatePrompt: boolean; // ask "what did you get done?" when a focus round ends
 }
 
 export type SoundEvent = "focusStart" | "focusEnd" | "breakStart" | "breakEnd" | "cycleEnd";
@@ -269,6 +287,7 @@ export const DEFAULT_SETTINGS: Settings = {
   miniPos: null,
   minimizeToTray: false,
   globalShortcuts: { toggle: "Ctrl+Alt+Shift+Space", mini: "Ctrl+Alt+Shift+M", clickThrough: "Ctrl+Alt+Shift+T" },
+  annotatePrompt: true,
 };
 
 /** A half-open interval [start, end) in epoch ms. */

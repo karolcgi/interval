@@ -70,6 +70,7 @@ export interface AppState {
   completionPopup: number | null; // browser preview: show the completion card in the app
   globalShortcutErrors: string[]; // system-wide shortcuts another app already owns
   settingsAnchor: string | null; // section to scroll to when Settings opens
+  journalRev: number; // bumped when diary notes change, so views reload them
 }
 
 const initial: AppState = {
@@ -110,6 +111,7 @@ const initial: AppState = {
   update: null,
   completionPopup: null,
   globalShortcutErrors: [],
+  journalRev: 0,
   settingsAnchor: null,
 };
 

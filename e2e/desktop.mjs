@@ -111,6 +111,16 @@ try {
   await waitFor(async () => (await windows()).includes("popup"), "completion popup window", 8000);
   ok("Round ended → break started, focus-end sound played, completion popup window opened");
 
+  // "What did you get done?" in the docked panel during the break: saved in the real database (migration v6)
+  await js(`const i = document.querySelector('.focus-panel .annotate-input'); i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'Desktop note'); i.dispatchEvent(new Event('input', {bubbles: true})); return true;`);
+  await js(`document.querySelector('.focus-panel .annotate-input').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); return true;`);
+  await waitFor(() => js("return /Note saved/.test(document.querySelector('.toast')?.textContent || '')"), "note saved toast");
+  ok("Diary note from the timer panel saved to SQLite");
+
+  // The popup grows to fit its card (the "what did you get done?" box)
+  await invoke("popup_fit", { height: 260 }).then((r) => { if (r.err) throw new Error(`popup_fit: ${r.err}`); });
+  ok("Completion popup resizes to fit its card");
+
   // A second popup in the same session reuses the window instead of failing on the label
   const again = await invoke("popup_show");
   if (again.err || again.ok !== true) throw new Error(`popup_show again: ${JSON.stringify(again)}`);

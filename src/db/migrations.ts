@@ -195,6 +195,27 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
     // An optional emoji shown in front of a category's name. (`icon` keeps the unused v1 icon names.)
     up: [`ALTER TABLE categories ADD COLUMN emoji TEXT`],
   },
+  {
+    version: 6,
+    name: "creative diary",
+    up: [
+      // Notes, learnings, ideas, accomplishments and milestones the user wrote when a round ended or later
+      // on a recorded entry. No foreign keys: a note outlives a deleted session. 'capture' is reserved.
+      `CREATE TABLE journal_entries (
+        id TEXT PRIMARY KEY,
+        at INTEGER NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('note','learning','idea','accomplishment','milestone')),
+        text TEXT NOT NULL,
+        session_id TEXT,
+        block_id TEXT,
+        source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('capture','annotation','manual')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX idx_journal_at ON journal_entries(at)`,
+      `CREATE INDEX idx_journal_session ON journal_entries(session_id)`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

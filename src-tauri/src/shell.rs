@@ -686,6 +686,26 @@ pub async fn mini_expand<R: Runtime>(app: AppHandle<R>, expanded: bool, height: 
     Ok(())
 }
 
+/// Resize the completion popup to fit its card (the note box makes it taller), keeping the bottom edge.
+#[tauri::command]
+pub async fn popup_fit<R: Runtime>(app: AppHandle<R>, height: f64) -> Result<(), String> {
+    let Some(w) = app.get_webview_window("popup") else { return Ok(()) };
+    let lh = height.clamp(120.0, 420.0);
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let before = w.outer_size().map_err(|e| e.to_string())?;
+    let pos = w.outer_position().map_err(|e| e.to_string())?;
+    let new_h = (lh * scale) as i32;
+    let mut y = pos.y + before.height as i32 - new_h;
+    if let Ok(Some(m)) = w.current_monitor() {
+        let a = m.work_area();
+        y = y.clamp(a.position.y, a.position.y + a.size.height as i32 - new_h);
+    }
+    let lw = before.width as f64 / scale;
+    w.set_size(tauri::LogicalSize::new(lw, lh)).map_err(|e| e.to_string())?;
+    let _ = w.set_position(PhysicalPosition::new(pos.x, y));
+    Ok(())
+}
+
 #[tauri::command]
 pub fn mini_is_open<R: Runtime>(app: AppHandle<R>) -> bool {
     app.get_webview_window("mini").is_some()

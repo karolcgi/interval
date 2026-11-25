@@ -17,6 +17,7 @@ export interface FloatUi {
   categories: Array<{ id: string; name: string; color: string; icon: string | null }>;
   focusMin: number;
   mode: "pomodoro" | "flowtime" | "stopwatch";
+  annotate: boolean; // ask "what did you get done?" on the completion card
 }
 
 export type TimerBroadcast = TimerSnapshot & { ui: FloatUi };
@@ -107,6 +108,12 @@ export async function closeWindow(which: "mini" | "popup") {
 }
 
 /** Floating timer: grow for the edit view, shrink back (desktop only). */
+/** Resize the completion popup to its card, keeping its bottom edge where it is. */
+export async function popupFit(height: number) {
+  if (!isTauri()) return;
+  await tauriInvoke("popup_fit", { height }).catch(() => {});
+}
+
 export async function miniExpand(expanded: boolean, height?: number) {
   if (!isTauri()) return;
   await tauriInvoke("mini_expand", { expanded, height: height ?? null }).catch(() => {});

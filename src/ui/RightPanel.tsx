@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { SmilePlus } from "lucide-react";
+import { DiaryNotes } from "./DiaryNotes";
 import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
 import { Ban, Check, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
 import { useApp, useNow } from "../state/store";
@@ -396,6 +397,9 @@ function BlockInspector({ block }: { block: Block }) {
       <label className="insp-label">Notes</label>
       <TextField multiline value={block.notes} placeholder="Optional notes" onCommit={(notes) => upd({ notes }, "Edit notes")} />
 
+      <label className="insp-label">Diary</label>
+      <DiaryNotes blockId={block.id} at={block.endAt} />
+
       <div className="insp-tools">
         <button className="icon-btn" title="Duplicate (Ctrl D)" onClick={() => void A.duplicateBlock(block.id)}>
           <CopyPlus size={14} />
@@ -472,6 +476,8 @@ function SessionInspector({ session }: { session: Session }) {
       <TagInput value={session.tagIds} onChange={(tagIds) => upd({ tagIds }, "Change tags")} />
       <label className="insp-label">Notes</label>
       <TextField multiline value={session.notes} placeholder="Optional notes" onCommit={(notes) => upd({ notes }, "Edit notes")} />
+      <label className="insp-label">Diary</label>
+      <DiaryNotes sessionId={session.id} at={session.endAt ?? Date.now()} />
       <div className="insp-meta small muted">
         {session.mode === "manual" ? "Logged manually" : "Recorded with timer"} · {fmtDuration(end - session.startAt)} · {session.tz}
       </div>
