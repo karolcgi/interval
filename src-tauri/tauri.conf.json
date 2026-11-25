@@ -52,7 +52,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczRDQxRjVFNURDRDU2NkEKUldScVZzMWRYaC9VYy9JQ1h5WWRCNzRNUDdwN1dUZzN6N3Zaek1EWWR2aEVsZEw2OHc3blVnYWEK",
       "endpoints": [
-        "https://github.com/OWNER/interval/releases/latest/download/latest.json"
+        "https://github.com/karolcgi/interval/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
