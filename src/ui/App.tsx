@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { CalendarView } from "./CalendarView";
 import { RightPanel } from "./RightPanel";
 import { StatsView } from "./StatsView";
+import { BudgetsView } from "./BudgetsView";
 import { CategoriesView } from "./CategoriesView";
 import { SettingsView } from "./SettingsView";
 import { FloatingTimer } from "./FloatingTimer";
@@ -12,6 +13,7 @@ import { CommandPalette } from "./CommandPalette";
 import { Toasts, SleepGapBanner } from "./Overlays";
 import { useTheme } from "./useTheme";
 import { FocusOverlay } from "./FocusOverlay";
+import { DailyRitual } from "./DailyRitual";
 import { useFocusEngine, useTray } from "./useFocusEngine";
 
 export function App() {
@@ -50,6 +52,7 @@ export function App() {
         )}
         {view === "calendar" && <CalendarView />}
         {view === "stats" && <StatsView />}
+        {view === "budgets" && <BudgetsView />}
         {view === "categories" && <CategoriesView />}
         {view === "settings" && <SettingsView />}
         <FloatingTimer />
@@ -58,6 +61,7 @@ export function App() {
       <SleepGapBanner />
       <CommandPalette />
       <Toasts />
+      <DailyRitual />
       <FocusOverlay />
     </div>
   );

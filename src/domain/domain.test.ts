@@ -8,6 +8,7 @@ import type { Block, Category, Session } from "./types";
 import { fmtClock, fmtDuration, isoLocal } from "./format";
 import { parseCsv, toCsv } from "./csv";
 import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./focus";
+import { activeRuns } from "./analytics";
 import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
 
 // ------------------------------------------------------------- fixtures
@@ -320,5 +321,26 @@ describe("focus transitions", () => {
     expect(nextStep(f, 999).type).toBe("none");
     expect(nextStep({ ...f, pausedRemaining: 5 }, 5000).type).toBe("none");
     expect(nextStep(f, 1000)).toEqual({ type: "focus-done", at: 1000, breakMinutes: 5, round: 1 });
+  });
+});
+
+describe("advanced analytics", () => {
+  it("planned time per bucket excludes breaks and skipped blocks", () => {
+    const cats = [{ id: "w", isBreak: false }, { id: "b", isBreak: true }] as Category[];
+    const blk = (id: string, cat: string, d: number, h0: number, h1: number, status: Block["status"] = "planned") =>
+      ({ id, categoryId: cat, startAt: t(2026, 11, d, h0), endAt: t(2026, 11, d, h1), status, tagIds: [], createdAt: 0 }) as unknown as Block;
+    const st = computeStats({
+      sessions: [],
+      blocks: [blk("a", "w", 23, 9, 12), blk("b", "b", 23, 12, 13), blk("c", "w", 24, 9, 11, "skipped"), blk("d", "w", 25, 22, 26)],
+      categories: cats,
+      range: { start: t(2026, 11, 23), end: t(2026, 11, 30) },
+      now: t(2026, 11, 23),
+    });
+    expect(st.buckets.map((b) => b.plannedMs / HOUR)).toEqual([3, 0, 2, 2, 0, 0, 0]); // midnight-crossing block split
+  });
+
+  it("active-day runs ignore an empty today", () => {
+    const day = (d: number, h: number) => ({ day: t(2026, 11, d), ms: h * HOUR });
+    expect(activeRuns([day(20, 1), day(21, 0), day(22, 2), day(23, 1), day(24, 3), day(25, 0)], t(2026, 11, 25))).toEqual({ longest: 3, current: 3, active: 4 });
   });
 });

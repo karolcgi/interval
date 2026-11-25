@@ -11,6 +11,9 @@ import { catVars, CategorySelect, Segmented } from "./bits";
 import { TagInput } from "./TagInput";
 import { RepeatSection } from "./RepeatSection";
 import { StartMenuButton } from "./StartMenu";
+import { openRitual, suggestedRitual } from "./DailyRitual";
+import { budgetProgress } from "../domain/budgets";
+import { targetColor, targetName, useBudgetData } from "./BudgetsView";
 import { openExternal } from "../platform";
 import { findMergeCandidate } from "../domain/calendar";
 
@@ -51,9 +54,17 @@ function DayOverview() {
     : undefined;
   const unreviewed = blocks.filter((b) => b.status === "planned" && b.endAt <= now && isSameDay(b.startAt, date)).length;
   const pct = st.plannedMs > 0 ? Math.min(100, (st.recordedMs / st.plannedMs) * 100) : 0;
+  const prompts = useApp((s) => s.settings.reviewPrompts);
+  const ritual = prompts ? suggestedRitual(date, now, note, blocks) : null;
 
   return (
     <div className="panel-inner">
+      {ritual && (
+        <button className="ritual-prompt" onClick={() => openRitual(ritual, date)}>
+          <span className="eyebrow">{ritual === "plan" ? "Morning planning" : "Evening review"}</span>
+          <span>{ritual === "plan" ? "Plan the day in two minutes" : "Close the day: confirm, reflect, prepare tomorrow"}</span>
+        </button>
+      )}
       <div className="card hero">
         <div className="eyebrow">{isToday ? "Today’s time" : fmt.full(date)}</div>
         <div className="hero-val">{fmtDuration(st.recordedMs)}</div>
@@ -98,6 +109,8 @@ function DayOverview() {
         )}
       </section>
 
+      <PanelBudgets />
+
       {upNext && !running && (
         <section className="panel-sec">
           <div className="eyebrow">Up next</div>
@@ -122,6 +135,54 @@ function DayOverview() {
         <NoteField key={`r-${date}`} value={note?.reflection ?? ""} placeholder="Optional. How did the day go?" onSave={(v) => void A.saveDailyNote({ reflection: v || null })} />
       </section>
     </div>
+  );
+}
+
+/** Today's and this week's budgets, compact. Only shown when budgets exist. */
+function PanelBudgets() {
+  const all = useApp((s) => s.budgets);
+  const categories = useApp((s) => s.categories);
+  const tags = useApp((s) => s.tags);
+  const budgets = useMemo(() => all.filter((b) => !b.archivedAt && (b.period === "day" || b.period === "week")), [all]);
+  const { data, weekStartsOn } = useBudgetData(budgets);
+  const now = useNow(60_000);
+  if (!budgets.length || !data) return null;
+  return (
+    <section className="panel-sec">
+      <div className="sec-head">
+        <h3>Budgets</h3>
+        <button className="link-btn" onClick={() => A.setView("budgets")}>
+          All
+        </button>
+      </div>
+      <ul className="dist">
+        {budgets.map((b) => {
+          const p = budgetProgress(b, data.sessions, data.blocks, categories, now, weekStartsOn);
+          const goal = p.minMs ?? p.maxMs ?? 1;
+          return (
+            <li key={b.id} style={catVars(targetColor(b, categories))}>
+              <div className="dist-top">
+                <span className="dist-name">
+                  {targetName(b, categories, tags)} <span className="muted">{b.period === "day" ? "today" : "week"}</span>
+                </span>
+                <span className={`dist-val ${p.status === "over" ? "over" : ""}`}>
+                  {fmtDuration(p.doneMs, { compact: true })}
+                  <span className="muted">
+                    {" "}
+                    / {fmtDuration(goal, { compact: true })}
+                    {p.minMs === null ? " max" : ""}
+                  </span>
+                </span>
+              </div>
+              <div className="dist-bar">
+                <span className="dist-plan" style={{ width: `${Math.min(1, (p.doneMs + p.plannedAheadMs) / goal) * 100}%` }} />
+                <span className="dist-act" style={{ width: `${Math.min(1, p.doneMs / goal) * 100}%` }} />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

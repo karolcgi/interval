@@ -10,6 +10,7 @@ import { store } from "../state/store";
 import * as A from "../state/actions";
 import * as P from "../state/planning";
 import * as F from "../state/focus";
+import { budgetHistory, budgetProgress, periodRange } from "../domain/budgets";
 import { computeStats } from "../domain/stats";
 import { resolveRange, startOfDay, HOUR, MINUTE } from "../domain/time";
 
@@ -440,6 +441,54 @@ describe("Pomodoro and Flowtime", () => {
       expect(store.get().focus).toBeNull();
       expect(store.get().running?.mode).toBe("stopwatch");
     }));
+});
+
+describe("time budgets", () => {
+  it("weekly minimum for a category and tag, with planned time ahead and history", async () => {
+    vi.useFakeTimers();
+    try {
+      const db = await testDb();
+      vi.setSystemTime(t(2026, 11, 25, 12)); // Wednesday
+      await boot(db);
+      const houdini = await A.ensureTag("Houdini");
+      const studying = catId("Studying");
+      // last week: 3h; this week: 2h recorded (one Houdini), 2h planned later this week
+      await A.createSession({ start: t(2026, 11, 17, 9), end: t(2026, 11, 17, 12) }, studying);
+      await A.createSession({ start: t(2026, 11, 24, 9), end: t(2026, 11, 24, 10) }, studying, { tagIds: [houdini.id] });
+      await A.createSession({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, studying);
+      await A.createBlock({ start: t(2026, 11, 27, 9), end: t(2026, 11, 27, 11) }, studying);
+      await A.createBlock({ start: t(2026, 11, 28, 9), end: t(2026, 11, 28, 10) }, studying, { status: "skipped" });
+      await A.saveBudget({ id: "b1", targetType: "category", targetId: studying, period: "week", minMinutes: 5 * 60, maxMinutes: null, archivedAt: null, createdAt: 0 });
+      await A.saveBudget({ id: "b2", targetType: "tag", targetId: houdini.id, period: "week", minMinutes: null, maxMinutes: 30, archivedAt: null, createdAt: 0 });
+      const [b1, b2] = store.get().budgets;
+      const sessions = await repo.listAllSessions(db);
+      const blocks = await repo.listAllBlocks(db);
+      const cats = store.get().categories;
+      const p1 = budgetProgress(b1, sessions, blocks, cats, Date.now(), 1);
+      expect(p1.doneMs).toBe(2 * HOUR);
+      expect(p1.plannedAheadMs).toBe(2 * HOUR); // skipped block not counted
+      expect(p1.remainingMs).toBe(3 * HOUR);
+      expect(p1.status).toBe("behind"); // 2 + 2 < 5
+      const p2 = budgetProgress(b2, sessions, blocks, cats, Date.now(), 1);
+      expect(p2.doneMs).toBe(HOUR);
+      expect(p2.status).toBe("over");
+      const hist = budgetHistory(b1, sessions, blocks, cats, Date.now(), 1, 2);
+      expect(hist.map((h) => h.doneMs)).toEqual([0, 3 * HOUR]);
+      expect(hist.map((h) => h.ok)).toEqual([false, false]);
+      await expect(A.saveBudget({ ...b1, minMinutes: null, maxMinutes: null })).rejects.toThrow();
+      await A.deleteBudget("b2");
+      expect(store.get().budgets).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("period ranges are local and DST-safe", () => {
+    const w = periodRange("week", t(2026, 3, 29, 12), 1);
+    expect(w.end - w.start).toBe(7 * 24 * HOUR - HOUR); // spring-forward week is 167h
+    expect(new Date(periodRange("month", t(2026, 2, 10), 1, -1).start).getMonth()).toBe(0);
+    expect(new Date(periodRange("year", t(2026, 6, 1), 1).start).getFullYear()).toBe(2026);
+  });
 });
 
 describe("import / export (acceptance #13)", () => {

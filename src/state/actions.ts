@@ -5,7 +5,7 @@ import { store, type CalendarMode, type PausedTimer, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
 import type { FocusState } from "../domain/focus";
 import * as repo from "../db/repo";
-import type { Block, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, Budget, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { ensureOccurrences } from "./planning";
 import { focusUserStop, nextRound as focusNextRound, setFocusState } from "./focus";
@@ -340,6 +340,20 @@ export async function saveDailyNote(patch: Partial<Pick<DailyNote, "intention" |
   await db().batch([repo.upsertDailyNoteStmt(note)]);
   if (dayKey(store.get().date) === date) store.set({ dailyNote: note });
   return note;
+}
+
+// ------------------------------------------------------------------ budgets
+
+export async function saveBudget(b: Budget) {
+  if (b.minMinutes === null && b.maxMinutes === null) throw new Error("Set a target, a limit, or both.");
+  if (b.minMinutes !== null && b.maxMinutes !== null && b.maxMinutes < b.minMinutes) throw new Error("The limit is below the target.");
+  await db().batch([repo.upsertBudgetStmt(b)]);
+  store.set({ budgets: await repo.listBudgets(db()) });
+}
+
+export async function deleteBudget(id: Id) {
+  await db().batch([repo.deleteBudgetStmt(id)]);
+  store.set({ budgets: await repo.listBudgets(db()) });
 }
 
 // ------------------------------------------------------------------ blocks

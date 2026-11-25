@@ -6,7 +6,7 @@ import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
-export type View = "calendar" | "stats" | "categories" | "settings";
+export type View = "calendar" | "stats" | "budgets" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 
@@ -63,6 +63,7 @@ export interface AppState {
   clipboard: Block[];
   paletteOpen: boolean;
   focusMode: boolean;
+  ritual: { kind: "plan" | "review"; day: number } | null; // morning planning / evening review overlay
   update: { version: string; notes: string | null; progress: number | null } | null;
 }
 
@@ -98,6 +99,7 @@ const initial: AppState = {
   clipboard: [],
   paletteOpen: false,
   focusMode: false,
+  ritual: null,
   update: null,
 };
 

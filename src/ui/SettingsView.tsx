@@ -164,6 +164,16 @@ export function SettingsView() {
         )}
       </div>
 
+      <h2 className="section-title">Daily ritual</h2>
+      <div className="settings-block">
+        <Row label="Suggest planning and review" hint="A quiet prompt in the day panel: plan in the morning, review in the evening. Always optional.">
+          <input type="checkbox" checked={s.reviewPrompts} onChange={(e) => set({ reviewPrompts: e.target.checked })} aria-label="Suggest planning and review" />
+        </Row>
+        <Row label="Working day" hint="Morning planning shows how much of it is still unallocated">
+          <NumField label="Working day hours" value={s.workdayHours} min={1} max={16} onChange={(workdayHours) => set({ workdayHours })} suffix="hours" />
+        </Row>
+      </div>
+
       <h2 className="section-title">Data</h2>
       <div className="settings-block">
         <Row label="Database" hint={isTauri() ? "Local SQLite file. A rolling daily backup (last 14 days) is written to a backups folder beside it." : "Browser preview: stored in this browser’s IndexedDB. Use the desktop app for real records."}>

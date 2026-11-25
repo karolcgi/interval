@@ -164,6 +164,42 @@ try {
   await page.locator(".float-timer").waitFor({ state: "detached" });
   ok("Flowtime: 62 min focus, stop suggests 10 min break, break ends by itself");
 
+  // ------------------------------------------------------------------- budgets
+  await page.getByRole("button", { name: "Time budgets" }).click();
+  await page.getByLabel("Budget for").selectOption({ label: "Studying" });
+  await page.getByLabel("Target hours").first().fill("7");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByLabel("Budget for").selectOption({ label: "Freelance work" });
+  await page.getByLabel("Limit hours").first().fill("1");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expectText(page.locator(".budget-row"), /Studying.*Needs planning|Studying.*On track/, "studying budget");
+  await expectText(page.locator(".budget-row"), /Freelance work.*Over limit/, "freelance limit exceeded (25 + 62 min)");
+  await shot("phase2-budgets");
+  ok("Weekly budgets: Studying ≥ 7h, Freelance ≤ 1h shows Over limit");
+
+  // -------------------------------------------------------------- daily ritual
+  await page.locator(".nav-item", { hasText: "Today" }).click();
+  await page.locator(".ritual-prompt", { hasText: "Morning planning" }).click();
+  await expectText(page.locator(".ritual"), /Plan today/, "planning opens");
+  await expectText(page.locator(".ritual .ritual-total"), /planned of a 8h day/, "workday allocation");
+  await page.getByLabel("Daily intention").fill("Ship the Houdini setup");
+  await shot("phase2-plan");
+  await page.getByRole("button", { name: "Done planning" }).click();
+  await page.locator(".ritual").waitFor({ state: "detached" });
+  await page.clock.setSystemTime(local(2026, 11, 25, 18, 0));
+  await page.clock.runFor(31_000);
+  await page.locator(".ritual-prompt", { hasText: "Evening review" }).click();
+  await expectText(page.locator(".ritual h3"), /2 blocks to confirm/, "unreviewed blocks listed");
+  await page.locator(".ritual-block", { hasText: "Client edit" }).getByRole("button", { name: "Done" }).click();
+  await page.locator(".ritual-block", { hasText: "Houdini" }).getByRole("button", { name: "Skipped" }).click();
+  await expectText(page.locator(".ritual h3"), /All blocks reviewed/, "all reviewed");
+  await page.getByLabel("Reflection").fill("Good focus in the morning.");
+  await shot("phase2-review");
+  await page.getByRole("button", { name: "Finish review" }).click();
+  await page.locator(".ritual").waitFor({ state: "detached" });
+  if ((await page.locator(".ritual-prompt").count()) !== 0) await fail("prompt should disappear after review");
+  ok("Morning planning with intention; evening review confirms one block, skips one, saves reflection");
+
   if (errors.length) throw new Error("Console errors:\n" + errors.join("\n"));
   console.log(`\nAll ${step} Phase 2 steps passed.`);
   writeFileSync(new URL("phase2-result.txt", OUT), `passed ${step} steps\n`);
