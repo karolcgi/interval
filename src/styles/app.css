@@ -3880,7 +3880,7 @@ html[data-window] #root {
   border: 1px solid var(--border);
   border-left: 2px solid var(--tone);
   border-radius: 10px;
-  height: 100%;
+  min-height: 100%;
   box-sizing: border-box;
   animation: rise var(--dur) var(--ease);
 }
@@ -4039,3 +4039,35 @@ html[data-window] #root {
 .emoji-picker.inline .emoji-btn { height: 26px; font-size: 15px; }
 .emoji-btn:hover, .emoji-btn:focus-visible { background: var(--hover); outline: none; }
 .emoji-empty { padding: 10px 4px; }
+
+/* ── Diary notes (v0.6) ─────────────────────────────────────────────── */
+.annotate { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.annotate-row { display: flex; gap: 6px; }
+.annotate-input { flex: 1; min-width: 0; }
+.annotate-kinds { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.annotate-kind { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border-radius: 11px; border: 1px solid transparent; color: var(--text-3); font-size: var(--fs-2xs); }
+.annotate-kind:hover { background: var(--hover); color: var(--text); }
+.annotate-kind.on { border-color: var(--border-strong); color: var(--text); background: var(--hover); }
+.annotate-kind:not(.on) .annotate-kind-label { display: none; }
+.annotate-saved { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--text-3); font-size: var(--fs-2xs); }
+.annotate.compact { margin-top: 8px; width: 100%; }
+.annotate.compact .annotate-kind.on .annotate-kind-label { display: none; }
+.diary-notes { display: flex; flex-direction: column; gap: 6px; }
+.diary-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.diary-item { display: flex; align-items: center; gap: 4px; min-height: 28px; }
+.diary-item .field { flex: 1; min-width: 0; }
+.diary-text { flex: 1; min-width: 0; text-align: left; font-size: var(--fs-sm); color: var(--text); padding: 4px 4px; border-radius: 5px; white-space: normal; word-break: break-word; }
+.diary-text:hover { background: var(--hover); }
+.diary-time { flex: none; font-variant-numeric: tabular-nums; }
+.diary-del { opacity: 0; }
+.diary-item:hover .diary-del, .diary-del:focus-visible { opacity: 1; }
+.diary-add { display: flex; align-items: center; gap: 4px; }
+.diary-add .field { flex: 1; min-width: 0; }
+.kind-picker { position: relative; flex: none; }
+.kind-btn { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font-size: 15px; line-height: 1; }
+.kind-btn:hover { background: var(--hover); }
+.kind-menu { position: absolute; top: 30px; left: 0; z-index: 30; min-width: 170px; list-style: none; margin: 0; padding: 4px; }
+.kind-menu li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; font-size: var(--fs-sm); cursor: pointer; }
+.kind-menu li:hover, .kind-menu li.on { background: var(--hover); }
+.annotate.compact { flex: 1 1 100%; min-width: 0; max-width: 100%; }
+.annotate.compact .annotate-row .btn { display: none; } /* Enter saves; the sidebar is narrow */

@@ -18,8 +18,9 @@
 import { store, type PausedTimer } from "./store";
 import * as repo from "../db/repo";
 import * as A from "./actions";
+import * as J from "./journal";
 import type { Statement } from "../db/driver";
-import type { Block, FocusRun, Id, Session, SessionMode } from "../domain/types";
+import type { Block, EntryKind, FocusRun, Id, Session, SessionMode } from "../domain/types";
 import { currentTimeZone, MINUTE } from "../domain/time";
 import { fmtDuration } from "../domain/format";
 import {
@@ -792,13 +793,20 @@ export type TimerCommand =
   | { type: "target"; categoryId?: Id; title?: string | null }
   | { type: "length"; minutes: number }
   | { type: "onTop"; on: boolean }
-  | { type: "start"; kind?: FocusKind; categoryId?: Id; title?: string | null };
+  | { type: "start"; kind?: FocusKind; categoryId?: Id; title?: string | null }
+  | { type: "annotate"; text: string; kind: EntryKind; sessionId: Id | null; at: number };
 
 /**
  * Runs a command sent by another window, the tray or a global shortcut. `rev` is the state revision the
  * sender saw; if the timer has moved on since, the command is dropped (prevents double actions).
  */
 export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void> {
+  // A note about a finished round is not a timer action: never dropped as stale, and it doesn't change the timer.
+  if (typeof cmd === "object" && cmd.type === "annotate") {
+    return J.addEntry({ text: cmd.text, kind: cmd.kind, sessionId: cmd.sessionId, at: cmd.at, source: "annotation" })
+      .then((e) => void (e && A.toast("Note saved")))
+      .catch(A.reportError);
+  }
   return serial(async () => {
     const f = store.get().focus;
     if (rev != null && f && rev !== f.rev) return;

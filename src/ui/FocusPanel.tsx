@@ -11,6 +11,7 @@ import { isTauri } from "../platform";
 import { CatDot, catVars, useOutside } from "./bits";
 import type { Category } from "../domain/types";
 import { currentSnapshot } from "./useFocusEngine";
+import { AnnotateBox } from "./Annotate";
 import { useState } from "react";
 
 const run = (p: Promise<unknown>) => void p.catch(A.reportError);
@@ -180,7 +181,10 @@ export function FocusPanel() {
               )}
             </>
           ) : onBreak ? (
-            <span className="ftp-break-note">{snap.categoryName && snap.status !== "completed" ? snap.categoryName : "Break"}</span>
+            <>
+              <span className="ftp-break-note">{snap.categoryName && snap.status !== "completed" ? snap.categoryName : "Break"}</span>
+              {settings.annotatePrompt && snap.completed?.phase === "focus" && <AnnotateBox key={snap.completed.runId} className="compact" completed={snap.completed} send={(cmd) => run(F.runCommand(cmd))} />}
+            </>
           ) : (
             <>
               <CategoryPicker categories={categories} value={snap.categoryId ?? defaultCat} onChange={(categoryId) => run(F.setTarget({ categoryId }))} />

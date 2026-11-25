@@ -93,6 +93,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 | Emoji icons: per category (shown in place of the colour dot), and in front of block/session names (inspector, floating timer) | ✅ |
 | Left sidebar resizable by dragging its edge (180–440 px), remembered; double-click resets | ✅ |
 
+## v0.6 status (creative diary, first part)
+
+| Area | State |
+|---|---|
+| Diary notes: Note, Learning, Idea, Accomplishment, Milestone; stored with the session (and its block) they belong to; included in JSON export/import | ✅ |
+| "What did you get done?" on the completion popup and in the timer panel during the break (optional, Settings › Focus timer) | ✅ |
+| Details panel › Diary: add, retype, edit and delete notes on any recorded session or planned block | ✅ |
+| Quick Capture, daily journal Markdown, journal workspace, Obsidian daily-note sync, notes in reviews | parked (Karol, 2026-11-25) |
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.

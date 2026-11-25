@@ -71,6 +71,9 @@ export function FocusTimerSettings({ part = "all" }: { part?: "all" | "timer" | 
               ))}
           </select>
         </Row>
+        <Row label="Ask what got done" hint="When a focus round ends, the completion card and the timer panel offer a one-line diary note (accomplishment, learning, idea…). Skip it and nothing is saved.">
+          <input type="checkbox" checked={s.annotatePrompt} onChange={(e) => set({ annotatePrompt: e.target.checked })} aria-label="Ask what got done" />
+        </Row>
         <Row label="Stopwatch reminder" hint="One gentle nudge after a long unbroken stopwatch stretch. 0 turns it off.">
           <NumField label="Break reminder minutes" value={s.breakReminderMinutes} min={0} max={480} onChange={(breakReminderMinutes) => set({ breakReminderMinutes })} suffix="min" />
         </Row>

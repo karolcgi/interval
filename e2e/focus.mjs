@@ -169,6 +169,12 @@ try {
   await popup.locator(".completion-card").waitFor();
   await expectText(popup.locator(".cc-title"), /39m|40m/, "focused duration");
   await expectText(popup.locator(".cc-body"), /Short break running · 5 min/, "break running");
+  // "What did you get done?" on the popup: saved as a diary note on the round's session
+  const ask = popup.getByRole("textbox", { name: "What did you get done?" });
+  await ask.fill("Blocked out the hero shot");
+  await ask.press("Enter");
+  await expectText(popup.locator(".annotate-saved"), /Saved/, "note saved from the popup");
+  await expectText(page.locator(".toast"), /Note saved/, "main window saved the note");
   await shot("focus-popup", popup);
   await popup.getByRole("button", { name: "+5 min focus" }).click();
   await expectText(panel.locator(".ftp-label"), /Focus 1 of 4/, "back in focus 1");
@@ -176,7 +182,7 @@ try {
   await page.locator(".in-app-completion").waitFor({ state: "detached" });
   const sounds = await page.evaluate(() => window.__intervalSounds);
   if (!sounds.includes("focusStart") || !sounds.includes("focusEnd")) await fail(`sounds played: ${JSON.stringify(sounds)}`);
-  ok("Focus ends → break starts, completion card + popup; “+5 min focus” continues the round seamlessly");
+  ok("Focus ends → break starts, completion card + popup asks what got done (note saved); “+5 min focus” continues the round seamlessly");
 
   // 7. Skip to break, skip break, stop
   await panel.getByRole("button", { name: "Skip to break" }).click();
@@ -304,6 +310,33 @@ try {
   if (!/^🚀 /.test(await page.locator(".insp-title").inputValue())) await fail("block title should start with 🚀");
   await shot("block-title-emoji");
   ok(`${swatches} category colours; category emoji shows in Activities; emoji in front of a block title from the inspector`);
+
+  // 15. Diary notes in the details panel: the note from the popup is on the recorded session; add another
+  await page.keyboard.press("Escape");
+  // The round's session: the longest recorded "Client production" entry today
+  const idx = await page.evaluate(() => {
+    const els = [...document.querySelectorAll(".session")];
+    let best = -1, h = 0;
+    els.forEach((el, i) => {
+      const r = el.getBoundingClientRect();
+      if ((el.getAttribute("title") || "").startsWith("Client production") && r.height > h) (best = i), (h = r.height);
+    });
+    return best;
+  });
+  if (idx < 0) await fail("no recorded Client production session");
+  await page.locator(".session").nth(idx).click();
+  await expectText(page.locator(".diary-item"), /Blocked out the hero shot/, "popup note on the session");
+  await page.getByRole("button", { name: /^Note type/ }).last().click();
+  await page.getByRole("listbox", { name: "Note type" }).getByRole("option", { name: /Learning/ }).click();
+  await page.getByRole("textbox", { name: "Add a diary note" }).fill("Long lens flattens the set nicely");
+  await page.getByRole("textbox", { name: "Add a diary note" }).press("Enter");
+  await expectText(page.locator(".diary-item.kind-learning"), /Long lens/, "learning note added");
+  await page.locator(".diary-item", { hasText: "Long lens" }).locator(".diary-text").click();
+  await page.getByRole("textbox", { name: "Edit note" }).fill("Long lens flattens the set");
+  await page.getByRole("textbox", { name: "Edit note" }).press("Enter");
+  await expectText(page.locator(".diary-item.kind-learning .diary-text"), /^Long lens flattens the set$/, "note edited");
+  await shot("diary-notes");
+  ok("Details panel › Diary: the popup's note sits on the recorded session; notes can be added, typed and edited");
 
   if (errors.length) throw new Error(`Console errors:\n${errors.join("\n")}`);
   console.log(`\nAll ${step} focus timer steps passed.`);

@@ -1,8 +1,8 @@
 // Repository: maps rows <-> domain objects and builds SQL statements.
 // Mutation helpers return Statement[] so callers can compose atomic batches.
 
-import type { DbDriver, Statement } from "./driver";
-import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, FocusRun, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
+import type { DbDriver, SqlValue, Statement } from "./driver";
+import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, EntryKind, FocusRun, Id, JournalEntry, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 
@@ -240,6 +240,8 @@ export async function loadSettings(db: DbDriver): Promise<Settings> {
       /* ignore corrupt value, keep default */
     }
   }
+  // Object settings saved by an older version get keys added since then (e.g. the Quick Capture shortcut).
+  s.globalShortcuts = { ...DEFAULT_SETTINGS.globalShortcuts, ...(s.globalShortcuts as object) };
   return s as unknown as Settings;
 }
 
@@ -499,4 +501,54 @@ export function upsertFocusRunStmt(f: FocusRun): Statement {
 
 export function deleteFocusRunStmt(id: Id): Statement {
   return { sql: "DELETE FROM focus_runs WHERE id = ?", params: [id] };
+}
+
+// ---------------------------------------------------------- journal entries
+
+function toEntry(r: Row): JournalEntry {
+  return {
+    id: String(r.id),
+    at: Number(r.at),
+    kind: String(r.kind) as EntryKind,
+    text: String(r.text),
+    sessionId: str(r.session_id),
+    blockId: str(r.block_id),
+    source: String(r.source) as JournalEntry["source"],
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+/** Entries in [start, end), oldest first. */
+export async function listEntries(db: DbDriver, start: number, end: number): Promise<JournalEntry[]> {
+  return (await db.select<Row>("SELECT * FROM journal_entries WHERE at >= ? AND at < ? ORDER BY at, created_at", [start, end])).map(toEntry);
+}
+
+export async function listAllEntries(db: DbDriver): Promise<JournalEntry[]> {
+  return (await db.select<Row>("SELECT * FROM journal_entries ORDER BY at, created_at")).map(toEntry);
+}
+
+/** Entries written on a session, on a block, or on any of the given sessions; oldest first. */
+export async function listEntriesFor(db: DbDriver, t: { sessionId?: Id; blockId?: Id; sessionIds?: Id[] }): Promise<JournalEntry[]> {
+  const ids = [...(t.sessionIds ?? []), ...(t.sessionId ? [t.sessionId] : [])];
+  const where: string[] = [];
+  const params: SqlValue[] = [];
+  if (ids.length) (where.push(`session_id IN (${ids.map(() => "?").join(",")})`), params.push(...ids));
+  if (t.blockId) (where.push("block_id = ?"), params.push(t.blockId));
+  if (!where.length) return [];
+  return (await db.select<Row>(`SELECT * FROM journal_entries WHERE ${where.join(" OR ")} ORDER BY at, created_at`, params)).map(toEntry);
+}
+
+export function upsertEntryStmt(e: JournalEntry): Statement {
+  return {
+    sql: `INSERT INTO journal_entries (id, at, kind, text, session_id, block_id, source, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET at=excluded.at, kind=excluded.kind, text=excluded.text, session_id=excluded.session_id,
+            block_id=excluded.block_id, source=excluded.source, updated_at=excluded.updated_at`,
+    params: [e.id, e.at, e.kind, e.text, e.sessionId, e.blockId, e.source, e.createdAt, e.updatedAt],
+  };
+}
+
+export function deleteEntryStmt(id: Id): Statement {
+  return { sql: "DELETE FROM journal_entries WHERE id = ?", params: [id] };
 }

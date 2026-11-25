@@ -273,6 +273,16 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
   The picker is a curated offline set with keyword search.
 - **Close to tray** defaults to on (Rust `CLOSE_TO_TRAY` and the setting default agree).
 
+## v0.6 notes (creative diary, first part)
+
+- **Notes** live in `journal_entries` (migration v6): `at`, `kind` (note/learning/idea/accomplishment/milestone),
+  `text`, optional `session_id`/`block_id`, `source` (annotation/manual; `capture` reserved for Quick Capture).
+  No foreign keys: a note outlives a deleted session. `state/journal.ts` adds/edits/deletes and bumps `journalRev`.
+- **Annotation** is a timer command (`{type:"annotate"}`) so the popup window can send it, but it is handled
+  before the stale-rev check and never changes the timer. The popup window fits its card via `popup_fit`.
+- **Parked** (designs kept in `/mnt/project-files/diary-parked/`): journal Markdown + template, Obsidian daily-note
+  managed section (HTML-comment markers, interval_* properties, conflict detection, backups), Quick Capture window.
+
 ## Roadmap notes
 
 Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.

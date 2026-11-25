@@ -406,6 +406,33 @@ describe("focus timer engine", () => {
       expect(store.get().focus).toMatchObject({ phase: "focus", round: 1 });
     }));
 
+  it("a note typed when a round ends is saved on that round's session and block, and survives export/import", () =>
+    withClock(async (db) => {
+      const blk = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+      await F.startPomodoro({ categoryId: catId("Studying"), blockId: blk.id }, P25);
+      await advance(t(2026, 11, 25, 9, 25) + 5_000);
+      const c = store.get().focus!.completed!;
+      expect(c.phase).toBe("focus");
+      const rev = store.get().focus!.rev;
+      await F.runCommand({ type: "annotate", text: "  Finished the noise setup ", kind: "accomplishment", sessionId: c.sessionId, at: c.at }, rev - 1);
+      expect(store.get().focus!.rev).toBe(rev); // not a timer action
+      const [e] = await repo.listEntriesFor(db, { sessionId: c.sessionId! });
+      expect(e).toMatchObject({ text: "Finished the noise setup", kind: "accomplishment", source: "annotation", blockId: blk.id, at: t(2026, 11, 25, 9, 25) });
+      expect((await repo.listEntriesFor(db, { blockId: blk.id })).map((x) => x.id)).toEqual([e.id]);
+      const J = await import("../state/journal");
+      await J.addEntry({ text: "Curl noise for trails", kind: "idea", sessionId: c.sessionId });
+      await J.updateEntry(e, { kind: "milestone" });
+      expect((await repo.listEntries(db, t(2026, 11, 25), t(2026, 11, 26))).map((x) => [x.kind, x.text])).toEqual([
+        ["milestone", "Finished the noise setup"],
+        ["idea", "Curl noise for trails"],
+      ]);
+      const fresh = await testDb();
+      await importJson(fresh, JSON.parse(JSON.stringify(await exportJson(db))));
+      expect((await repo.listAllEntries(fresh)).length).toBe(2);
+      await J.updateEntry(e, { text: "  " }); // emptied → deleted
+      expect((await repo.listAllEntries(db)).length).toBe(1);
+    }));
+
   it("abandon discards the current phase across pauses; earlier rounds stay recorded", () =>
     withClock(async (db) => {
       await F.startPomodoro({ categoryId: catId("Studying") }, P25);

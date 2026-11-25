@@ -86,6 +86,7 @@ pub fn run() {
             shell::mini_expand,
             shell::popup_show,
             shell::popup_close,
+            shell::popup_fit,
             shell::restore_main,
             shell::is_fullscreen_active,
             shell::import_sound,
