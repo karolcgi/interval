@@ -14,6 +14,8 @@ import { addDays, dayKey, HOUR, isSameDay, startOfDay } from "../domain/time";
 import { fmt, fmtDuration, fmtTime } from "../domain/format";
 import { catVars, CatDot } from "./bits";
 import { targetColor, targetName, useBudgetData } from "./BudgetsView";
+import { copyText, DayLogTimeline, useDayLog } from "./DayLogView";
+import { dayLogMarkdown } from "../domain/daylog";
 
 export function openRitual(kind: "plan" | "review", day = store.get().date) {
   A.setCalendarMode("day");
@@ -74,20 +76,17 @@ function useDay(day: number) {
 
 function Plan({ day }: { day: number }) {
   const { dayBlocks, stats, catById, categories } = useDay(day);
-  const note = useApp((s) => s.dailyNote);
   const workdayHours = useApp((s) => s.settings.workdayHours);
   const templates = useApp((s) => s.templates);
   const allBudgets = useApp((s) => s.budgets);
   const budgets = useMemo(() => allBudgets.filter((b) => !b.archivedAt && (b.period === "day" || b.period === "week")), [allBudgets]);
-  const [intention, setIntention] = useState(note?.intention ?? "");
-  useEffect(() => setIntention(note?.intention ?? ""), [note?.intention]);
   const workday = workdayHours * HOUR;
   const unallocated = Math.max(0, workday - stats.plannedMs);
   const over = Math.max(0, stats.plannedMs - workday);
   const rows = stats.byCategory.filter((r) => r.plannedMs > 0 && !catById.get(r.categoryId)?.isBreak);
 
   const finish = async () => {
-    await A.saveDailyNote({ intention: intention.trim() || null, plannedAt: Date.now() });
+    await A.saveDailyNote({ plannedAt: Date.now() });
     store.set({ ritual: null });
     A.toast("Day planned");
   };
@@ -148,11 +147,6 @@ function Plan({ day }: { day: number }) {
       </section>
 
       {budgets.length > 0 && <BudgetCheck budgets={budgets} categories={categories} />}
-
-      <section className="ritual-sec">
-        <h3>Intention</h3>
-        <input className="field" placeholder="Optional. What matters today?" value={intention} onChange={(e) => setIntention(e.target.value)} aria-label="Daily intention" onKeyDown={(e) => e.key === "Enter" && void finish()} />
-      </section>
 
       <div className="ritual-foot">
         <button className="btn btn-outline" onClick={() => void finish().catch(A.reportError)}>
@@ -215,11 +209,10 @@ function BlockLine({ b, cat, actions }: { b: Block; cat?: Category; actions?: Re
 
 function Review({ day }: { day: number }) {
   const { dayBlocks, stats, catById, now } = useDay(day);
-  const note = useApp((s) => s.dailyNote);
   const db = useApp((s) => s.db);
   const templates = useApp((s) => s.templates);
-  const [reflection, setReflection] = useState(note?.reflection ?? "");
-  useEffect(() => setReflection(note?.reflection ?? ""), [note?.reflection]);
+  const timeFormat = useApp((s) => s.settings.timeFormat);
+  const log = useDayLog(day);
   const [tomorrow, setTomorrow] = useState<Block[] | null>(null);
   const tomorrowStart = addDays(day, 1);
   useEffect(() => {
@@ -232,7 +225,7 @@ function Review({ day }: { day: number }) {
   const diff = stats.recordedMs - stats.plannedMs;
 
   const finish = async () => {
-    await A.saveDailyNote({ reflection: reflection.trim() || null, reviewedAt: Date.now() }, dayKey(day));
+    await A.saveDailyNote({ reviewedAt: Date.now() }, dayKey(day));
     store.set({ ritual: null });
     A.toast("Day reviewed");
   };
@@ -301,8 +294,13 @@ function Review({ day }: { day: number }) {
       </section>
 
       <section className="ritual-sec">
-        <h3>Reflection</h3>
-        <textarea className="note field" rows={3} placeholder="Optional. How did the day go?" value={reflection} onChange={(e) => setReflection(e.target.value)} aria-label="Reflection" />
+        <div className="sec-head">
+          <h3>Day log</h3>
+          <button className="link-btn" disabled={!log?.entries.length} onClick={() => log && void copyText(dayLogMarkdown(log, { timeFormat })).then(() => A.toast("Day log copied as Markdown"))}>
+            Copy Markdown
+          </button>
+        </div>
+        {log && <DayLogTimeline log={log} timeFormat={timeFormat} compact />}
       </section>
 
       <section className="ritual-sec">

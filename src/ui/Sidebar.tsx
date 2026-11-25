@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CalendarDays, ChartNoAxesColumn, Gauge, Play, Settings2, Shapes, Sun, Square } from "lucide-react";
+import { CalendarDays, ChartNoAxesColumn, Gauge, NotebookText, Play, Settings2, Shapes, Sun, Square } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import { StartMenuButton } from "./StartMenu";
@@ -46,6 +46,7 @@ export function Sidebar() {
         <NavItem icon={<CalendarDays size={15} />} label="Calendar" active={view === "calendar" && !isTodayView} onClick={() => A.setCalendarMode(mode === "day" ? "week" : mode)} hint="W" />
         <NavItem icon={<ChartNoAxesColumn size={15} />} label="Statistics" active={view === "stats"} onClick={() => A.setView("stats")} />
         <NavItem icon={<Gauge size={15} />} label="Time budgets" active={view === "budgets"} onClick={() => A.setView("budgets")} />
+        <NavItem icon={<NotebookText size={15} />} label="Day log" active={view === "log"} onClick={() => A.setView("log")} />
         <NavItem icon={<Shapes size={15} />} label="Categories & tags" active={view === "categories"} onClick={() => A.setView("categories")} />
       </nav>
 

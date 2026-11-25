@@ -2910,3 +2910,146 @@ textarea.field {
   height: 2px;
   border-radius: 1px;
 }
+
+/* ============================================================ day log */
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.sec-actions {
+  display: inline-flex;
+  gap: var(--sp-3);
+}
+.link-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.daylog-grid {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 760px);
+  gap: var(--sp-6);
+  align-items: start;
+}
+.daylog-days {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  position: sticky;
+  top: var(--sp-4);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+.daylog-day {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-align: left;
+}
+.daylog-day:hover {
+  background: var(--hover);
+}
+.daylog-day.on {
+  background: var(--active);
+  color: var(--text);
+}
+.daylog-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.daylog-bar,
+.daylog-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.daylog-bar .grow,
+.daylog-actions .grow {
+  flex: 1;
+}
+.daylog-date {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  min-width: 190px;
+  text-align: center;
+}
+.daylog-actions {
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-4);
+}
+.daylog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.daylog-list li {
+  display: grid;
+  grid-template-columns: 96px 10px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.daylog-list li .cat-dot,
+.daylog-list li > span:nth-child(2) {
+  align-self: center;
+}
+.daylog-list li.brk .dl-title {
+  color: var(--text-3);
+}
+.dl-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.dl-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-dur {
+  font-variant-numeric: tabular-nums;
+}
+.daylog-list.compact li {
+  grid-template-columns: 78px 8px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 0;
+  font-size: var(--fs-xs);
+}
+.daylog-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  margin-top: var(--sp-2);
+  color: var(--text-2);
+}
+.daylog-md {
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font: 12.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  user-select: text;
+}
+@media (max-width: 900px) {
+  .daylog-grid {
+    grid-template-columns: 1fr;
+  }
+  .daylog-days {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    max-height: none;
+  }
+}

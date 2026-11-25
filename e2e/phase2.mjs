@@ -182,7 +182,6 @@ try {
   await page.locator(".ritual-prompt", { hasText: "Morning planning" }).click();
   await expectText(page.locator(".ritual"), /Plan today/, "planning opens");
   await expectText(page.locator(".ritual .ritual-total"), /planned of a 8h day/, "workday allocation");
-  await page.getByLabel("Daily intention").fill("Ship the Houdini setup");
   await shot("phase2-plan");
   await page.getByRole("button", { name: "Done planning" }).click();
   await page.locator(".ritual").waitFor({ state: "detached" });
@@ -193,12 +192,43 @@ try {
   await page.locator(".ritual-block", { hasText: "Client edit" }).getByRole("button", { name: "Done" }).click();
   await page.locator(".ritual-block", { hasText: "Houdini" }).getByRole("button", { name: "Skipped" }).click();
   await expectText(page.locator(".ritual h3"), /All blocks reviewed/, "all reviewed");
-  await page.getByLabel("Reflection").fill("Good focus in the morning.");
+  await expectText(page.locator(".ritual .daylog-list"), /Client edit/, "review shows the day log");
   await shot("phase2-review");
   await page.getByRole("button", { name: "Finish review" }).click();
   await page.locator(".ritual").waitFor({ state: "detached" });
   if ((await page.locator(".ritual-prompt").count()) !== 0) await fail("prompt should disappear after review");
-  ok("Morning planning with intention; evening review confirms one block, skips one, saves reflection");
+  ok("Morning planning; evening review confirms one block, skips one, shows the day log");
+
+  // ------------------------------------------------- click to create: name, then category
+  await page.keyboard.press("Escape");
+  await page.evaluate((hh) => (document.querySelector(".tl-scroll").scrollTop = 19 * hh), HH);
+  {
+    const box = await page.locator(".tl-col").first().locator(".lane-plan").boundingBox();
+    const y = box.y + 20.5 * HH;
+    await page.mouse.click(box.x + box.width / 2, y);
+  }
+  // Type straight away, no waiting: the name field must already have focus.
+  await page.keyboard.type("Evening sketch");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("2");
+  await expectText(planBlocks(), /Evening sketch/, "click-created block is named");
+  const sketch = planBlocks().filter({ hasText: "Evening sketch" });
+  await expectText(sketch, /Studying/, "and has the chosen category");
+  ok("Click an empty Plan slot, type a name at once, Enter, pick category by key");
+
+  // ------------------------------------------------------------------ day log
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.locator(".nav-item", { hasText: "Day log" }).click();
+  await expectText(page.locator(".daylog-list"), /Client edit/, "day log lists recorded work");
+  await page.getByRole("radio", { name: "Markdown" }).click();
+  await expectText(page.locator(".daylog-md"), /# Wednesday 25 November 2026[\s\S]*\*\*Client edit\*\*/, "markdown timeline");
+  await page.getByRole("button", { name: "Copy Markdown" }).click();
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  if (!/\*\*Client edit\*\*/.test(clip)) await fail("clipboard should hold the markdown, got: " + clip.slice(0, 120));
+  await shot("phase2-daylog");
+  await page.getByRole("button", { name: "Previous day" }).click();
+  await expectText(page.locator(".daylog-date"), /Nov 24/, "browse to the previous day");
+  ok("Day log: timeline from recorded time, Markdown view, copy, browse previous days");
 
   if (errors.length) throw new Error("Console errors:\n" + errors.join("\n"));
   console.log(`\nAll ${step} Phase 2 steps passed.`);

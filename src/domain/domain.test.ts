@@ -10,6 +10,7 @@ import { parseCsv, toCsv } from "./csv";
 import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./focus";
 import { activeRuns } from "./analytics";
 import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
+import { buildDayLog, dayLogMarkdown, rangeLogMarkdown } from "./daylog";
 
 // ------------------------------------------------------------- fixtures
 
@@ -342,5 +343,39 @@ describe("advanced analytics", () => {
   it("active-day runs ignore an empty today", () => {
     const day = (d: number, h: number) => ({ day: t(2026, 11, d), ms: h * HOUR });
     expect(activeRuns([day(20, 1), day(21, 0), day(22, 2), day(23, 1), day(24, 3), day(25, 0)], t(2026, 11, 25))).toEqual({ longest: 3, current: 3, active: 4 });
+  });
+});
+
+describe("day log", () => {
+  const D = t(2026, 11, 25);
+  const blocks: Block[] = [{ id: "b1", title: "Client X boards", categoryId: "work" } as Block];
+  it("builds a markdown timeline from recorded sessions, titles first, merging resumed sessions", () => {
+    const sessions = [
+      sess(t(2026, 11, 25, 9), t(2026, 11, 25, 10, 30), "study", [], { title: "Houdini VEX" }),
+      sess(t(2026, 11, 25, 10, 30), t(2026, 11, 25, 10, 45), "break"),
+      sess(t(2026, 11, 25, 11), t(2026, 11, 25, 12), "work", [], { blockId: "b1" }),
+      sess(t(2026, 11, 25, 12), t(2026, 11, 25, 13), "work", [], { blockId: "b1" }), // resumed: merges
+      sess(t(2026, 11, 24, 23), t(2026, 11, 25, 0, 30), "work"), // crosses midnight: clipped
+      sess(t(2026, 11, 25, 14), null, "study", [], { title: "Running *thing*" }),
+    ];
+    const log = buildDayLog(D, sessions, blocks, CATS, [], t(2026, 11, 25, 14, 20));
+    expect(log.entries.map((e) => e.title)).toEqual(["work", "Houdini VEX", "break", "Client X boards", "Running *thing*"]);
+    expect(log.entries[3].end - log.entries[3].start).toBe(2 * HOUR);
+    expect(log.breakMs).toBe(15 * MINUTE);
+    expect(log.totalMs).toBe(30 * MINUTE + 90 * MINUTE + 2 * HOUR + 20 * MINUTE);
+    const md = dayLogMarkdown(log);
+    expect(md).toContain("- 09:00–10:30 **Houdini VEX** · study · 1h 30m");
+    expect(md).toContain("- 10:30–10:45 break · 15m");
+    expect(md).toContain("- 11:00–13:00 **Client X boards** · work · 2h");
+    expect(md).toContain("- 00:00–00:30 **work** · 30m");
+    expect(md).toContain("- 14:00–now **Running \\*thing\\*** · study · 20m");
+    expect(md).toMatch(/\*\*Total 4h 20m\*\* · work 2h 30m · study 1h 50m · Breaks 15m\n$/);
+  });
+  it("handles empty days and multi-day exports", () => {
+    const empty = buildDayLog(D, [], [], CATS, [], D);
+    expect(dayLogMarkdown(empty, { heading: false })).toBe("Nothing recorded.\n");
+    const d2 = buildDayLog(addDays(D, 1), [sess(t(2026, 11, 26, 9), t(2026, 11, 26, 10), "work")], [], CATS, [], t(2026, 11, 27));
+    const md = rangeLogMarkdown([empty, d2]);
+    expect(md.startsWith("## Thursday 26 November 2026\n\n- 09:00–10:00 **work** · 1h")).toBe(true);
   });
 });

@@ -56,6 +56,7 @@ function Palette() {
       { id: "plan-day", label: "Plan the day", run: () => import("./DailyRitual").then((m) => m.openRitual("plan")) },
       { id: "review-day", label: "Review the day", run: () => import("./DailyRitual").then((m) => m.openRitual("review")) },
       { id: "budgets", label: "Open time budgets", run: () => A.setView("budgets") },
+      { id: "log", label: "Open day log", run: () => A.setView("log") },
       { id: "undo", label: "Undo", hint: "Ctrl Z", run: A.undo },
       { id: "redo", label: "Redo", hint: "Ctrl Y", run: A.redo },
       { id: "theme", label: "Toggle light / dark theme", run: () => A.updateSettings({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" }) },

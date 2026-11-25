@@ -42,7 +42,8 @@ No account, no network, no cloud. Your data is one SQLite file you own.
 | Pomodoro (presets + custom), Flowtime (break suggested from focus length), focus mode (F), break reminders, system notifications | ✅ |
 | Tray timer: status in the tray tooltip and menu, start/stop/Pomodoro/Flowtime from the tray, optional close to tray | ✅ |
 | Time budgets: minimum targets and maximum limits per category or tag, daily/weekly/monthly/yearly/lifetime, history | ✅ |
-| Morning planning and evening review, daily intention and reflection | ✅ |
+| Morning planning and evening review | ✅ |
+| Day log: automatic Markdown timeline of recorded time, browsable by day, copy or save as .md | ✅ |
 | Analytics: 12-month heatmap, planned vs recorded, cumulative hours | ✅ |
 | Automatic daily backups to a folder you choose, configurable retention, Back up now | ✅ |
 
@@ -75,6 +76,10 @@ offer the update within a few hours (or immediately via Check now). No local Win
 Without tag-push rights (e.g. a coding agent): bump `version` in `package.json`, push to `main`, then run the
 **Release** workflow manually (Actions › Release › Run workflow, or `gh workflow run release.yml`). It tags
 `v<version>` itself.
+
+**Preview builds** (to test a branch before releasing): run the Release workflow on that branch with *preview* ticked.
+It publishes a GitHub pre-release `v<version>-preview.<run>`. Installed copies never auto-update to a preview, and the
+final `v<version>` is newer than any of its previews, so it still arrives as a normal update.
 
 **Update signing key.** Updates are signed with a private key stored as the repository secrets
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is in
@@ -146,9 +151,10 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
 
 ## Using it
 
-- **Plan**: drag on the left (Plan) lane. Type a name, press Enter, then press a category's number key
-  (or type to filter and Enter). No name? Just press Enter first; the block shows its category name.
-  Alt + number picks the category straight from the name field. Double-click empty space creates a default-length block.
+- **Plan**: click an empty slot in the left (Plan) lane for a default-length block, or drag to set its length.
+  Type a name straight away, press Enter, then press a category's number key (or type to filter and Enter).
+  No name? Just press Enter first; the block shows its category name. Alt + number picks the category
+  straight from the name field. If a block is selected, the first click only clears the selection.
 - **Rename**: double-click a block, press **F2**, or right-click › Rename. Enter saves, Esc cancels.
 - **Colour** always comes from the category. Change a category's colour and every block and session follows.
 - **Track**: hover a block and press ▶, or select it and press **S**. Stop with **S** or the floating timer.
@@ -167,6 +173,9 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
   in your break category, so they show up honestly in statistics.
 - **Budgets**: sidebar › Time budgets. "At least 7 h Studying a week", "at most 1 h of Admin a day". Progress counts recorded time;
   planned time still ahead shows whether you're on track.
+- **Day log**: sidebar › Day log. An automatic diary of what you actually recorded (time, name, category), one line
+  per activity. Browse any past day, copy it as Markdown, or save it as `YYYY-MM-DD.md` (Obsidian's daily-note name);
+  a whole week or month saves as one file. The details panel shows the selected day's log too.
 - **Daily ritual**: the details panel suggests planning in the morning and a review in the evening (turn it off in Settings).
 
 Keyboard reference: Settings › Keyboard, or Ctrl K.

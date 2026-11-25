@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/store";
 import { CatDot, usePlacement, useOutside } from "./bits";
 
 /**
- * The "new block" popover that appears after drag-creating on the timeline.
+ * The "new block" popover that appears after clicking or dragging on the Plan lane.
  *
  *   Name field (focused)   type a name, Enter or Tab moves to the category list
  *   Category field         a category's shortcut key picks it; or type to filter and press Enter
@@ -22,7 +22,26 @@ export function CategoryPicker(props: { x: number; y: number; title: string; onP
   const nameInput = useRef<HTMLInputElement>(null);
   const catInput = useRef<HTMLInputElement>(null);
   useOutside(ref, props.onCancel);
-  useEffect(() => nameInput.current?.focus(), []);
+  // Focus the name field at once, and again on the next frames: on Windows (WebView2) the click that
+  // created the block can finish after this mounts and pull focus back to the timeline.
+  useLayoutEffect(() => {
+    const focus = () => {
+      const el = nameInput.current;
+      if (el && document.activeElement !== el && document.activeElement !== catInput.current) el.focus();
+    };
+    focus();
+    const r1 = requestAnimationFrame(() => {
+      focus();
+      r2 = requestAnimationFrame(focus);
+    });
+    let r2 = 0;
+    const t = setTimeout(focus, 120);
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      clearTimeout(t);
+    };
+  }, []);
 
   const [query, legacyTitle] = useMemo(() => {
     const i = q.indexOf(",");

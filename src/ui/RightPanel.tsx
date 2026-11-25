@@ -15,6 +15,7 @@ import { openRitual, suggestedRitual } from "./DailyRitual";
 import { budgetProgress } from "../domain/budgets";
 import { targetColor, targetName, useBudgetData } from "./BudgetsView";
 import { openExternal } from "../platform";
+import { PanelDayLog } from "./DayLogView";
 import { findMergeCandidate } from "../domain/calendar";
 
 export function RightPanel() {
@@ -126,14 +127,7 @@ function DayOverview() {
         </section>
       )}
 
-      <section className="panel-sec">
-        <div className="eyebrow">Daily intention</div>
-        <NoteField key={`i-${date}`} value={note?.intention ?? ""} placeholder="What matters today?" onSave={(v) => void A.saveDailyNote({ intention: v || null })} />
-      </section>
-      <section className="panel-sec">
-        <div className="eyebrow">Reflection</div>
-        <NoteField key={`r-${date}`} value={note?.reflection ?? ""} placeholder="Optional. How did the day go?" onSave={(v) => void A.saveDailyNote({ reflection: v || null })} />
-      </section>
+      <PanelDayLog />
     </div>
   );
 }
@@ -183,21 +177,6 @@ function PanelBudgets() {
         })}
       </ul>
     </section>
-  );
-}
-
-function NoteField(p: { value: string; placeholder: string; onSave: (v: string) => void }) {
-  const [v, setV] = useState(p.value);
-  useEffect(() => setV(p.value), [p.value]);
-  return (
-    <textarea
-      className="note"
-      rows={2}
-      value={v}
-      placeholder={p.placeholder}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={() => v !== p.value && p.onSave(v.trim())}
-    />
   );
 }
 

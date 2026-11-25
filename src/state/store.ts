@@ -6,7 +6,7 @@ import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
-export type View = "calendar" | "stats" | "budgets" | "categories" | "settings";
+export type View = "calendar" | "stats" | "budgets" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 

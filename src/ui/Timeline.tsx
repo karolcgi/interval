@@ -1,7 +1,7 @@
 // The day/week timeline: the core interaction surface.
 //
 // Gestures (all snap to the configured interval):
-//   drag on empty Plan lane     -> create a planned block (category picker opens)
+//   click or drag on empty Plan lane -> create a planned block (name, then category)
 //   drag on empty Actual lane   -> log actual time retroactively
 //   drag a block/session        -> move (across days in week view); hold Alt or Ctrl to copy
 //   drag top/bottom edge        -> resize
@@ -204,7 +204,13 @@ export function Timeline({ days }: { days: number[] }) {
       if (!d) return;
       if (d.kind === "create") {
         if (!d.moved) {
+          // A plain click on an empty Plan slot creates a default-length block there, unless it is
+          // just clearing a selection. In the Actual lane a click only clears the selection.
+          const hadSelection = store.get().selection !== null;
           A.select(null);
+          if (d.lane !== "plan" || hadSelection) return;
+          const iv = dragToInterval(d.day, d.anchor, Math.min(1440, d.anchor + settings.defaultBlockMinutes), snapMinutes);
+          setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
           return;
         }
         const iv = dragToInterval(d.day, d.anchor, d.cur, snapMinutes);
@@ -251,7 +257,7 @@ export function Timeline({ days }: { days: number[] }) {
       window.removeEventListener("keydown", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag !== null, minuteAt, multi, snapMinutes]);
+  }, [drag !== null, minuteAt, multi, snapMinutes, settings.defaultBlockMinutes]);
 
   function itemInterval(lane: Lane, id: Id): Interval | null {
     if (lane === "plan") {

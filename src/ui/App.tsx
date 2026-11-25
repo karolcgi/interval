@@ -6,6 +6,7 @@ import { CalendarView } from "./CalendarView";
 import { RightPanel } from "./RightPanel";
 import { StatsView } from "./StatsView";
 import { BudgetsView } from "./BudgetsView";
+import { DayLogView } from "./DayLogView";
 import { CategoriesView } from "./CategoriesView";
 import { SettingsView } from "./SettingsView";
 import { FloatingTimer } from "./FloatingTimer";
@@ -53,6 +54,7 @@ export function App() {
         {view === "calendar" && <CalendarView />}
         {view === "stats" && <StatsView />}
         {view === "budgets" && <BudgetsView />}
+        {view === "log" && <DayLogView />}
         {view === "categories" && <CategoriesView />}
         {view === "settings" && <SettingsView />}
         <FloatingTimer />
