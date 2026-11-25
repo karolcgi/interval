@@ -794,7 +794,8 @@ export type TimerCommand =
   | { type: "length"; minutes: number }
   | { type: "onTop"; on: boolean }
   | { type: "start"; kind?: FocusKind; categoryId?: Id; title?: string | null }
-  | { type: "annotate"; text: string; kind: EntryKind; sessionId: Id | null; at: number };
+  | { type: "annotate"; text: string; kind: EntryKind; sessionId: Id | null; at: number }
+  | { type: "note"; text: string; at: number };
 
 /**
  * Runs a command sent by another window, the tray or a global shortcut. `rev` is the state revision the
@@ -806,6 +807,11 @@ export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void
     return J.addEntry({ text: cmd.text, kind: cmd.kind, sessionId: cmd.sessionId, at: cmd.at, source: "annotation" })
       .then((e) => void (e && A.toast("Note saved")))
       .catch(A.reportError);
+  }
+  // A quick note from the floating timer (v0.8): goes to the day log at the time it was sent, linked to
+  // whatever is recording. Not a timer action either.
+  if (typeof cmd === "object" && cmd.type === "note") {
+    return J.addQuickNote(cmd.text, cmd.at).then(() => undefined, A.reportError);
   }
   return serial(async () => {
     const f = store.get().focus;

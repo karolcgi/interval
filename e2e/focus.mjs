@@ -112,7 +112,7 @@ try {
   // 3. Floating mini timer shares the state and sends commands back
   const mini = await ctx.newPage();
   watch(mini, "mini");
-  await mini.setViewportSize({ width: 288, height: 118 });
+  await mini.setViewportSize({ width: 288, height: 138 }); // v0.8: matches mini_size("standard") in shell.rs
   await mini.goto(`${base}?window=mini`);
   await mini.locator(".float-root.mini .mt-clock").waitFor();
   await ctx.clock.runFor(1000);
@@ -124,6 +124,8 @@ try {
   await expectText(mini.locator(".mt-foot"), /Focus 1 of 4/, "mini shows the phase");
   await expectText(mini.locator(".mt-next"), /Short break · 5 min/, "mini shows what's next");
   await shot("focus-mini-standard", mini);
+  const fit = await mini.evaluate(() => [document.querySelector(".mt-toggle")?.getBoundingClientRect().bottom ?? 999, innerHeight, document.querySelector(".mt-note")?.getBoundingClientRect().bottom ?? 999]);
+  if (fit[0] > fit[1] + 0.5 || fit[2] > fit[1]) await fail(`note line and arrow must fit the standard window (${fit})`);
   await mini.getByRole("button", { name: "Pause" }).click();
   await panel.getByRole("button", { name: "Resume" }).waitFor();
   const frozen = await panel.locator(".ftp-clock").textContent();
@@ -250,14 +252,11 @@ try {
   await expectText(sessionsKpi, /^1$/, "still one session after abandoning");
   ok("Abandon → confirm discards the running session; history still shows only the earlier session");
 
-  // 11. Mini timer edit view: name (with an emoji), category, length, start, keep on top
+  // 11. Mini timer edit view (v0.8: opened by the always-visible arrow at the bottom): name, category, length, start, keep on top
   await mini.setViewportSize({ width: 288, height: 460 });
-  await mini.getByRole("button", { name: "Edit session" }).click();
+  if (!(await mini.locator(".mt-toggle").isVisible())) await fail("the down arrow should always be visible");
+  await mini.getByRole("button", { name: "Name, category, length" }).click();
   await mini.getByRole("textbox", { name: "Session name" }).fill("Lookdev pass");
-  await mini.getByRole("button", { name: "Session icon" }).click();
-  await mini.getByRole("textbox", { name: "Search emoji" }).fill("coffee");
-  await mini.getByRole("textbox", { name: "Search emoji" }).press("Enter");
-  if ((await mini.getByRole("textbox", { name: "Session name" }).inputValue()) !== "☕ Lookdev pass") await fail("emoji not put in front of the name");
   await mini.getByRole("listbox", { name: "Category" }).getByRole("option", { name: "Studying" }).click();
   await mini.locator(".mt-lengths").getByRole("button", { name: /^15/ }).click();
   await shot("focus-mini-edit", mini);
@@ -265,16 +264,39 @@ try {
   await page.locator(".focus-panel.is-running").waitFor();
   await expectText(panel.locator(".ftp-cat-name"), /Studying/, "category from the mini timer");
   await expectText(panel.locator(".ftp-clock"), /1[45]:\d\d/, "15 minute round");
-  await expectText(panel.locator(".ftp-title"), /☕ Lookdev pass/, "name from the mini timer");
+  await expectText(panel.locator(".ftp-title"), /Lookdev pass/, "name from the mini timer");
+  await mini.locator(".mt-clock.live").waitFor({ timeout: 4000 }).catch(() => fail("running clock should have the green live indicator"));
+  const liveBg = await mini.locator(".mt-clock.live").evaluate((el) => getComputedStyle(el).backgroundColor);
+  if (!liveBg || liveBg === "rgba(0, 0, 0, 0)") await fail("live indicator should have a background");
   const pin = mini.getByRole("button", { name: /Keep on top|Stop keeping on top/ });
   const pinned = await pin.getAttribute("aria-pressed");
   await pin.click();
   await mini.waitForFunction((was) => document.querySelector(".mt-top [aria-pressed]")?.getAttribute("aria-pressed") !== was, pinned);
-  if (!(await mini.locator(".mt-edit").count())) await mini.getByRole("button", { name: "Edit session" }).click();
+  if (!(await mini.locator(".mt-edit").count())) await mini.getByRole("button", { name: "Name, category, length" }).click();
   await mini.getByRole("button", { name: "Abandon" }).click();
   await mini.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Discard" }).click();
   await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
-  ok("Mini timer: name + emoji, category, 15 min length and Start drive the main timer; pin toggles on-top; abandon works there too");
+  ok("Mini timer: bottom arrow opens name, category, 15 min length and Start; green live pill while running; pin toggles on-top; abandon works there too");
+
+  // 11b. Quick note line on the mini timer → Day log, in the accent colour, at the time it was sent
+  const note = mini.getByRole("textbox", { name: "Quick note for the day log" });
+  await note.fill("client wants the logo bigger");
+  await note.press("Enter");
+  await expectText(page.locator(".toast"), /Note added to the day log/, "note toast");
+  if ((await note.inputValue()) !== "") await fail("note box should clear after sending");
+  await shot("focus-mini-note", mini);
+  await nav(page, "Day log");
+  const noteRow = page.locator(".daylog-list li.dl-note", { hasText: "client wants the logo bigger" });
+  await noteRow.waitFor({ timeout: 4000 }).catch(() => fail("note should be listed in the day log"));
+  if (!/^\d\d:\d\d$/.test((await noteRow.locator(".dl-time").textContent()).trim())) await fail("note should show the time it was posted");
+  const [noteColor, accent] = await noteRow.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()]);
+  const hex = (rgb) => "#" + rgb.match(/\d+/g).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
+  if (hex(noteColor) !== accent.toLowerCase()) await fail(`note should use the accent colour (${noteColor} vs ${accent})`);
+  await page.getByRole("radio", { name: "Markdown" }).click();
+  await expectText(page.locator(".daylog-md"), /\*Note:\* client wants the logo bigger/, "note in the Markdown log");
+  await page.getByRole("radio", { name: "Timeline" }).click();
+  await shot("daylog-note");
+  ok("Quick note from the mini timer lands in the Day log with its time, in the accent colour, and in the Markdown");
 
   // 12. Settings are split into tabs
   await nav(page, "Settings");
@@ -289,7 +311,7 @@ try {
   await shot("settings-tabs");
   ok("Settings are split into tabs; close-to-tray is on by default");
 
-  // 13. Category emoji + colours; block title emoji from the inspector
+  // 13. Category icons (Lucide) + colours; block icon and colour from the inspector
   await nav(page, "Categories");
   const row = page.locator(".cat-grid[data-name='Studying']");
   await row.getByRole("button", { name: "Change colour" }).click();
@@ -297,20 +319,24 @@ try {
   if (swatches < 24) await fail(`expected 24+ colours, got ${swatches}`);
   await row.getByRole("button", { name: "Change colour" }).click();
   await row.getByRole("button", { name: "Category icon" }).click();
-  await page.getByRole("textbox", { name: "Search emoji" }).fill("book");
-  await page.getByRole("dialog", { name: "Pick an emoji" }).getByRole("button", { name: /📚/ }).click();
-  await expectText(page.locator(".sidebar .cat-row", { hasText: "Studying" }).locator(".cat-emoji"), /📚/, "emoji shown in Activities");
-  await shot("categories-emoji");
+  if (await page.getByRole("textbox", { name: "Search emoji" }).count()) await fail("no emoji picker any more");
+  await page.getByRole("textbox", { name: "Search icons" }).fill("book");
+  await page.getByRole("dialog", { name: "Pick an icon" }).locator("[data-icon='library']").click();
+  await page.locator(".sidebar .cat-row", { hasText: "Studying" }).locator(".cat-icon svg").waitFor({ timeout: 4000 }).catch(() => fail("icon should show in Activities"));
+  await shot("categories-icons");
   await nav(page, "Today");
   const blk = page.locator(".tl-col .block").first();
   await blk.click();
-  await page.getByRole("button", { name: "Title icon" }).click();
-  await page.getByRole("textbox", { name: "Search emoji" }).fill("rocket");
-  await page.getByRole("textbox", { name: "Search emoji" }).press("Enter");
-  await expectText(page.locator(".insp-title-row .emoji-trigger"), /🚀/, "title icon set");
-  if (!/^🚀 /.test(await page.locator(".insp-title").inputValue())) await fail("block title should start with 🚀");
-  await shot("block-title-emoji");
-  ok(`${swatches} category colours; category emoji shows in Activities; emoji in front of a block title from the inspector`);
+  await page.getByRole("button", { name: "Block icon" }).click();
+  await page.getByRole("textbox", { name: "Search icons" }).fill("rocket");
+  await page.getByRole("textbox", { name: "Search icons" }).press("Enter");
+  await page.locator(".insp-title-row .icon-trigger.has svg").waitFor({ timeout: 4000 }).catch(() => fail("block icon set"));
+  await page.locator(".insp .color-field").getByRole("radio", { name: "Colour #d98c9a" }).click();
+  const blkC = await page.locator(".tl-col .block.selected").evaluate((el) => el.style.getPropertyValue("--c"));
+  if (blkC !== "#d98c9a") await fail(`block should take its own colour, got ${blkC}`);
+  await page.locator(".tl-col .block.selected .block-title .cat-icon svg").waitFor({ timeout: 4000 }).catch(() => fail("block shows its icon"));
+  await shot("block-icon-colour");
+  ok(`${swatches} category colours; Lucide icon shows in Activities; a block gets its own icon and colour from the inspector`);
 
   // 15. Diary notes in the details panel: the note from the popup is on the recorded session; add another
   await page.keyboard.press("Escape");

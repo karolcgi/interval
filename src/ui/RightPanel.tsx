@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { SmilePlus } from "lucide-react";
 import { DiaryNotes } from "./DiaryNotes";
-import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
+import { ColorField, IconButton } from "./IconPicker";
+import { PALETTE } from "./CategoriesView";
 import { Ban, Check, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
@@ -11,7 +11,7 @@ import type { Block, Session } from "../domain/types";
 import { computeStats } from "../domain/stats";
 import { addDays, atMinute, isSameDay, startOfDay } from "../domain/time";
 import { fmt, fmtClock, fmtDuration, fmtTime } from "../domain/format";
-import { catVars, CategorySelect, Segmented } from "./bits";
+import { catVars, CategorySelect, lookOf, Segmented } from "./bits";
 import { TagInput } from "./TagInput";
 import { RepeatSection } from "./RepeatSection";
 import { StartMenuButton } from "./StartMenu";
@@ -135,7 +135,7 @@ function DayOverview() {
       {upNext && !running && (
         <section className="panel-sec">
           <div className="eyebrow">Up next</div>
-          <div className="upnext" style={catVars(catById.get(upNext.categoryId)?.color ?? "#888")}>
+          <div className="upnext" style={catVars(lookOf(upNext, catById.get(upNext.categoryId)).color)}>
             <div className="upnext-title">{upNext.title || catById.get(upNext.categoryId)?.name}</div>
             <div className="muted small">
               {fmtTime(upNext.startAt)} · {fmtDuration(upNext.endAt - upNext.startAt)}
@@ -278,17 +278,11 @@ function TextField(p: { value: string | null; placeholder: string; onCommit: (v:
   );
 }
 
-/** Title input with an emoji button that sets (or swaps) the emoji in front of the name. */
-function TitleField(p: { value: string | null; placeholder: string; onCommit: (v: string | null) => void }) {
-  const [open, setOpen] = useState(false);
-  const lead = leadingEmoji(p.value);
-  const has = startsWithEmoji(p.value);
+/** Title input, with an icon button in front of it for things that carry their own icon (blocks). */
+function TitleField(p: { value: string | null; placeholder: string; onCommit: (v: string | null) => void; icon?: { value: string | null; color: string; onPick: (icon: string | null) => void } }) {
   return (
     <div className="insp-title-row">
-      <button className={`emoji-trigger ${has ? "has" : ""}`} onClick={() => setOpen((v) => !v)} title={has ? "Change icon" : "Add an icon"} aria-label="Title icon">
-        {has ? lead : <SmilePlus size={15} />}
-      </button>
-      {open && <EmojiPicker canClear={has} onPick={(e) => p.onCommit(withLeadingEmoji(p.value, e) || null)} onClose={() => setOpen(false)} />}
+      {p.icon && <IconButton icon={p.icon.value} color={p.icon.color} label="Block icon" onPick={p.icon.onPick} />}
       <TextField className="insp-title" value={p.value} placeholder={p.placeholder} onCommit={p.onCommit} />
     </div>
   );
@@ -317,6 +311,7 @@ function BlockInspector({ block }: { block: Block }) {
     if (db) void repo.sessionsForBlock(db, block.id).then(setLinked);
   }, [db, block.id, block.updatedAt, sessionsInView]);
   const cat = categories.find((c) => c.id === block.categoryId);
+  const look = lookOf(block, cat);
   const recorded = linked.reduce((acc, s) => acc + ((s.endAt ?? now) - s.startAt), 0);
   const plannedMs = block.endAt - block.startAt;
   const isRunningHere = running?.blockId === block.id;
@@ -325,10 +320,18 @@ function BlockInspector({ block }: { block: Block }) {
 
   return (
     <div className="panel-inner insp">
-      <InspectorHead color={cat?.color ?? "#888"} label="Planned block" onClose={() => A.select(null)} />
-      <TitleField value={block.title} placeholder={cat?.name ?? "Title"} onCommit={(title) => upd({ title }, "Rename block")} />
+      <InspectorHead color={look.color} label="Planned block" onClose={() => A.select(null)} />
+      <TitleField
+        value={block.title}
+        placeholder={cat?.name ?? "Title"}
+        onCommit={(title) => upd({ title }, "Rename block")}
+        icon={{ value: look.icon, color: look.color, onPick: (icon) => upd({ icon }, icon ? "Change icon" : "Remove icon") }}
+      />
       <div className="insp-row">
         <CategorySelect categories={categories} value={block.categoryId} includeArchivedId={block.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} />
+      </div>
+      <div className="insp-row">
+        <ColorField value={block.color} fallback={look.color} palette={PALETTE} onChange={(color) => upd({ color }, "Change colour")} />
       </div>
       <div className="insp-row time-row">
         <span className="muted small">{fmt.full(block.startAt)}</span>
@@ -366,11 +369,11 @@ function BlockInspector({ block }: { block: Block }) {
 
       <div className="insp-actions">
         {isRunningHere ? (
-          <button className="btn btn-cat wide" style={catVars(cat?.color ?? "#888")} onClick={() => void A.stopTimer()}>
+          <button className="btn btn-cat wide" style={catVars(look.color)} onClick={() => void A.stopTimer()}>
             <Square size={12} fill="currentColor" /> Stop · {fmtClock(now - running!.startAt)}
           </button>
         ) : (
-          <div className="split-start" style={catVars(cat?.color ?? "#888")}>
+          <div className="split-start" style={catVars(look.color)}>
             <button className="btn btn-cat wide" onClick={() => void L.startFromBlock(block.id).catch(A.reportError)}>
               <Play size={12} fill="currentColor" /> Start session
             </button>

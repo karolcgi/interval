@@ -52,7 +52,7 @@ async function materialise(until: number) {
     if (fromKey > lastKey) continue;
     for (const day of occurrencesBetween(r, parseDayKey(fromKey).getTime(), parseDayKey(lastKey).getTime())) {
       const start = atMinute(day, r.startMinute);
-      const b = newBlock({ start, end: start + r.durationMinutes * MINUTE }, r.categoryId, { title: r.title, tagIds: r.tagIds, recurrenceId: r.id, createdAt: now, updatedAt: now });
+      const b = newBlock({ start, end: start + r.durationMinutes * MINUTE }, r.categoryId, { title: r.title, tagIds: r.tagIds, recurrenceId: r.id, presetId: null, icon: r.icon ?? null, color: r.color ?? null, createdAt: now, updatedAt: now });
       stmts.push(...repo.upsertBlockStmts(b));
     }
     const nr = { ...r, materializedUntil: lastKey };
@@ -77,6 +77,8 @@ function ruleFromBlock(b: Block, rrule: string, id: Id = repo.newId()): Recurren
     startsOn: key,
     endsOn: null,
     materializedUntil: key, // the block itself is this day's occurrence
+    icon: b.icon ?? null,
+    color: b.color ?? null,
     createdAt: Date.now(),
   };
 }
@@ -93,6 +95,8 @@ export function differsFromRule(b: Block, r: RecurrenceRule): boolean {
     Math.round((b.endAt - b.startAt) / MINUTE) !== r.durationMinutes ||
     b.categoryId !== r.categoryId ||
     (b.title ?? null) !== (r.title ?? null) ||
+    (b.icon ?? null) !== (r.icon ?? null) ||
+    (b.color ?? null) !== (r.color ?? null) ||
     [...b.tagIds].sort().join(",") !== [...r.tagIds].sort().join(",")
   );
 }

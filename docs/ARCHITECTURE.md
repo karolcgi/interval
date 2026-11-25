@@ -300,6 +300,12 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - **Navigation**: `TopBar` (Today = calendar in day mode, Calendar = week/month). Sidebar sections collapse via
   `settings.sidebarCollapsed`.
 
+## v0.8 notes (icons, colours, quick notes)
+
+- Icons are Lucide names stored as text (`categories.icon`, `activity_presets.icon`, `blocks.icon`, `week_template_blocks.icon`, `recurrence_rules.icon`). `src/ui/icons.tsx` is the curated, statically imported set (keeps the bundle small); an unknown name renders as the colour dot. Migration v8 maps the v0.5 `categories.emoji` to icons via `domain/iconMap.ts` and leaves the `emoji` column unused.
+- Own colour (`color`, null = the category's) lives on presets and is **copied** onto blocks, template blocks and recurrence rules, like every other preset field. `lookOf(item, category)` in `ui/bits.tsx` resolves colour and icon for drawing. Recorded sessions keep the category colour (actual time is always by category).
+- Quick notes from the floating timer are a `note` timer command; the main window saves a `journal_entries` row with `source = 'capture'`, linked to the running session. `buildDayLog` takes the day's journal entries and lists capture notes by time (`dayLogItems`).
+
 ## Roadmap notes
 
 Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.

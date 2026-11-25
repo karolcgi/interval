@@ -7,7 +7,9 @@ import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import * as L from "../state/library";
 import { Timeline } from "./Timeline";
-import { CatDot, CategorySelect, catVars, usePlacement, useOutside } from "./bits";
+import { CatDot, CategorySelect, catVars, lookOf, usePlacement, useOutside } from "./bits";
+import { ColorField, IconButton } from "./IconPicker";
+import { PALETTE } from "./CategoriesView";
 import { TagInput } from "./TagInput";
 import { REF_WEEK, templateTotals, WEEKDAY_NAMES, WEEKDAY_SHORT } from "../domain/weekTemplate";
 import { fmtDuration, fmtTime } from "../domain/format";
@@ -110,7 +112,7 @@ function TemplatePanel() {
                 <li key={id} style={catVars(c?.color ?? "#888")}>
                   <div className="dist-top">
                     <span className="dist-name">
-                      <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} /> {c?.name ?? "Unknown"}
+                      <CatDot color={c?.color ?? "#888"} icon={c?.icon} /> {c?.name ?? "Unknown"}
                     </span>
                     <span className="dist-val">{hrs(m)}</span>
                   </div>
@@ -150,13 +152,15 @@ function TemplateBlockEditor({ t }: { t: WeekTemplateBlock }) {
   const start = atMinute(REF_WEEK[t.weekday], t.startMinute);
   const cat = categories.find((c) => c.id === t.categoryId);
   return (
-    <section className="tpl-editor" style={catVars(cat?.color ?? "#888")} aria-label="Template block">
+    <section className="tpl-editor" style={catVars(lookOf(t, cat).color)} aria-label="Template block">
       <div className="inspector-head">
         <span className="eyebrow">Template block · every {WEEKDAY_NAMES[t.weekday]}</span>
         <button className="icon-btn sm" onClick={() => store.set({ tplSelection: null })} aria-label="Close">
           <X size={14} />
         </button>
       </div>
+      <div className="pf-name">
+      <IconButton icon={t.icon} color={lookOf(t, cat).color} label="Template block icon" onPick={(icon) => upd({ icon }, icon ? "Change icon" : "Remove icon")} />
       <input
         className="field bare tpl-title"
         value={title}
@@ -166,12 +170,17 @@ function TemplateBlockEditor({ t }: { t: WeekTemplateBlock }) {
         onKeyDown={(e) => (e.stopPropagation(), e.key === "Enter" && (e.target as HTMLInputElement).blur())}
         aria-label="Template block name"
       />
+      </div>
       <div className="muted small tpl-time">
         {WEEKDAY_NAMES[t.weekday]} · {fmtTime(start, tf)} – {fmtTime(start + t.durationMinutes * 60_000, tf)} · {hrs(t.durationMinutes)}
       </div>
       <div className="pf-row">
         <span className="pf-label">Category</span>
         <CategorySelect categories={categories} value={t.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} includeArchivedId={t.categoryId} />
+      </div>
+      <div className="pf-row">
+        <span className="pf-label">Colour</span>
+        <ColorField value={t.color} fallback={cat?.color ?? "#888"} palette={PALETTE} onChange={(color) => upd({ color }, "Change colour")} />
       </div>
       <div className="pf-row">
         <span className="pf-label">Day</span>

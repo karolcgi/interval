@@ -23,7 +23,6 @@ function toCategory(r: Row): Category {
     name: String(r.name),
     color: String(r.color),
     icon: str(r.icon),
-    emoji: str(r.emoji),
     parentId: str(r.parent_id),
     sortOrder: Number(r.sort_order),
     shortcut: str(r.shortcut),
@@ -41,12 +40,12 @@ export async function listCategories(db: DbDriver): Promise<Category[]> {
 
 export function upsertCategoryStmt(c: Category): Statement {
   return {
-    sql: `INSERT INTO categories (id, name, color, icon, emoji, parent_id, sort_order, shortcut, is_break, archived_at, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, icon=excluded.icon, emoji=excluded.emoji,
+    sql: `INSERT INTO categories (id, name, color, icon, parent_id, sort_order, shortcut, is_break, archived_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, icon=excluded.icon,
             parent_id=excluded.parent_id, sort_order=excluded.sort_order, shortcut=excluded.shortcut,
             is_break=excluded.is_break, archived_at=excluded.archived_at, updated_at=excluded.updated_at`,
-    params: [c.id, c.name, c.color, c.icon, c.emoji ?? null, c.parentId, c.sortOrder, c.shortcut, c.isBreak ? 1 : 0, c.archivedAt, c.createdAt, c.updatedAt],
+    params: [c.id, c.name, c.color, c.icon, c.parentId, c.sortOrder, c.shortcut, c.isBreak ? 1 : 0, c.archivedAt, c.createdAt, c.updatedAt],
   };
 }
 
@@ -123,6 +122,8 @@ function toBlock(r: Row): Block {
     tagIds: splitIds(r.tag_ids),
     presetId: str(r.preset_id),
     templateBlockId: str(r.template_block_id),
+    icon: str(r.icon),
+    color: str(r.color),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -146,13 +147,13 @@ export async function getBlock(db: DbDriver, id: Id): Promise<Block | null> {
 export function upsertBlockStmts(b: Block): Statement[] {
   return [
     {
-      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, preset_id, template_block_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, preset_id, template_block_id, icon, color, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET start_at=excluded.start_at, end_at=excluded.end_at, tz=excluded.tz,
               category_id=excluded.category_id, title=excluded.title, notes=excluded.notes, link=excluded.link,
               status=excluded.status, recurrence_id=excluded.recurrence_id, preset_id=excluded.preset_id,
-              template_block_id=excluded.template_block_id, updated_at=excluded.updated_at`,
-      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.presetId ?? null, b.templateBlockId ?? null, b.createdAt, b.updatedAt],
+              template_block_id=excluded.template_block_id, icon=excluded.icon, color=excluded.color, updated_at=excluded.updated_at`,
+      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.presetId ?? null, b.templateBlockId ?? null, b.icon ?? null, b.color ?? null, b.createdAt, b.updatedAt],
     },
     { sql: "DELETE FROM block_tags WHERE block_id = ?", params: [b.id] },
     ...b.tagIds.map((t) => ({ sql: "INSERT OR IGNORE INTO block_tags (block_id, tag_id) VALUES (?, ?)", params: [b.id, t] })),
@@ -320,6 +321,8 @@ function toRule(r: Row): RecurrenceRule {
     startsOn: String(r.starts_on),
     endsOn: str(r.ends_on),
     materializedUntil: str(r.materialized_until),
+    icon: str(r.icon),
+    color: str(r.color),
     createdAt: Number(r.created_at),
   };
 }
@@ -330,12 +333,12 @@ export async function listRules(db: DbDriver): Promise<RecurrenceRule[]> {
 
 export function upsertRuleStmt(r: RecurrenceRule): Statement {
   return {
-    sql: `INSERT INTO recurrence_rules (id, rrule, start_minute, duration_minutes, category_id, title, tag_ids, starts_on, ends_on, materialized_until, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO recurrence_rules (id, rrule, start_minute, duration_minutes, category_id, title, tag_ids, starts_on, ends_on, materialized_until, icon, color, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET rrule=excluded.rrule, start_minute=excluded.start_minute, duration_minutes=excluded.duration_minutes,
             category_id=excluded.category_id, title=excluded.title, tag_ids=excluded.tag_ids, starts_on=excluded.starts_on,
-            ends_on=excluded.ends_on, materialized_until=excluded.materialized_until`,
-    params: [r.id, r.rrule, r.startMinute, r.durationMinutes, r.categoryId, r.title, JSON.stringify(r.tagIds), r.startsOn, r.endsOn, r.materializedUntil, r.createdAt],
+            ends_on=excluded.ends_on, materialized_until=excluded.materialized_until, icon=excluded.icon, color=excluded.color`,
+    params: [r.id, r.rrule, r.startMinute, r.durationMinutes, r.categoryId, r.title, JSON.stringify(r.tagIds), r.startsOn, r.endsOn, r.materializedUntil, r.icon ?? null, r.color ?? null, r.createdAt],
   };
 }
 
@@ -570,6 +573,8 @@ function toPreset(r: Row): ActivityPreset {
     focusPresetId: str(r.focus_preset_id),
     favorite: Number(r.favorite) === 1,
     sortOrder: Number(r.sort_order ?? 0),
+    icon: str(r.icon),
+    color: str(r.color),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -581,12 +586,12 @@ export async function listPresets(db: DbDriver): Promise<ActivityPreset[]> {
 
 export function upsertPresetStmt(p: ActivityPreset): Statement {
   return {
-    sql: `INSERT INTO activity_presets (id, name, category_id, duration_minutes, tag_ids, notes, focus_preset_id, favorite, sort_order, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO activity_presets (id, name, category_id, duration_minutes, tag_ids, notes, focus_preset_id, favorite, sort_order, icon, color, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET name=excluded.name, category_id=excluded.category_id, duration_minutes=excluded.duration_minutes,
             tag_ids=excluded.tag_ids, notes=excluded.notes, focus_preset_id=excluded.focus_preset_id, favorite=excluded.favorite,
-            sort_order=excluded.sort_order, updated_at=excluded.updated_at`,
-    params: [p.id, p.name, p.categoryId, p.durationMinutes, JSON.stringify(p.tagIds), p.notes, p.focusPresetId, p.favorite ? 1 : 0, p.sortOrder, p.createdAt, p.updatedAt],
+            sort_order=excluded.sort_order, icon=excluded.icon, color=excluded.color, updated_at=excluded.updated_at`,
+    params: [p.id, p.name, p.categoryId, p.durationMinutes, JSON.stringify(p.tagIds), p.notes, p.focusPresetId, p.favorite ? 1 : 0, p.sortOrder, p.icon ?? null, p.color ?? null, p.createdAt, p.updatedAt],
   };
 }
 
@@ -607,6 +612,8 @@ function toWeekBlock(r: Row): WeekTemplateBlock {
     notes: str(r.notes),
     tagIds: parseIds(r.tag_ids),
     presetId: str(r.preset_id),
+    icon: str(r.icon),
+    color: str(r.color),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -618,12 +625,12 @@ export async function listWeekTemplate(db: DbDriver): Promise<WeekTemplateBlock[
 
 export function upsertWeekBlockStmt(b: WeekTemplateBlock): Statement {
   return {
-    sql: `INSERT INTO week_template_blocks (id, weekday, start_minute, duration_minutes, category_id, title, notes, tag_ids, preset_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO week_template_blocks (id, weekday, start_minute, duration_minutes, category_id, title, notes, tag_ids, preset_id, icon, color, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET weekday=excluded.weekday, start_minute=excluded.start_minute, duration_minutes=excluded.duration_minutes,
             category_id=excluded.category_id, title=excluded.title, notes=excluded.notes, tag_ids=excluded.tag_ids,
-            preset_id=excluded.preset_id, updated_at=excluded.updated_at`,
-    params: [b.id, b.weekday, b.startMinute, b.durationMinutes, b.categoryId, b.title, b.notes, JSON.stringify(b.tagIds), b.presetId, b.createdAt, b.updatedAt],
+            preset_id=excluded.preset_id, icon=excluded.icon, color=excluded.color, updated_at=excluded.updated_at`,
+    params: [b.id, b.weekday, b.startMinute, b.durationMinutes, b.categoryId, b.title, b.notes, JSON.stringify(b.tagIds), b.presetId, b.icon ?? null, b.color ?? null, b.createdAt, b.updatedAt],
   };
 }
 

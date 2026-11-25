@@ -48,6 +48,8 @@ export function toRefBlock(t: WeekTemplateBlock): Block {
     recurrenceId: null,
     tagIds: t.tagIds,
     presetId: t.presetId,
+    icon: t.icon ?? null,
+    color: t.color ?? null,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   };
@@ -110,7 +112,7 @@ export function conflictsWith(s: Suggestion, blocks: Block[]): Block[] {
 }
 
 /** The copy a confirmed suggestion becomes: the template block's properties, on this date. */
-export function blockFieldsFrom(s: Suggestion): Pick<Block, "startAt" | "endAt" | "categoryId" | "title" | "notes" | "tagIds" | "presetId" | "templateBlockId"> {
+export function blockFieldsFrom(s: Suggestion): Pick<Block, "startAt" | "endAt" | "categoryId" | "title" | "notes" | "tagIds" | "presetId" | "templateBlockId" | "icon" | "color"> {
   return {
     startAt: s.startAt,
     endAt: s.endAt,
@@ -120,6 +122,8 @@ export function blockFieldsFrom(s: Suggestion): Pick<Block, "startAt" | "endAt" 
     tagIds: [...s.tb.tagIds],
     presetId: s.tb.presetId,
     templateBlockId: s.tb.id,
+    icon: s.tb.icon ?? null,
+    color: s.tb.color ?? null,
   };
 }
 

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Plus, SmilePlus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useApp } from "../state/store";
 import * as A from "../state/actions";
 import type { Category, Tag } from "../domain/types";
 import { CatDot } from "./bits";
-import { EmojiPicker } from "./EmojiPicker";
+import { IconButton } from "./IconPicker";
 
 export const PALETTE = [
   "#8298d7", "#8bbca0", "#ba9ad0", "#77b3bf", "#d49a72", "#c6ae76", "#9a9ba2", "#6c6d73", "#d98c9a", "#a3b86c", "#7fa7e0", "#c79bb8",
@@ -87,7 +87,7 @@ export function CategoriesView() {
             <div className="eyebrow pad-top">Archived</div>
             {archived.map((c) => (
               <div key={c.id} className="cat-grid archived">
-                <CatDot color={c.color} emoji={c.emoji} />
+                <CatDot color={c.color} icon={c.icon} />
                 <span>{c.name}</span>
                 <span />
                 <span />
@@ -118,7 +118,6 @@ export function CategoriesView() {
 function CategoryRow({ cat, all, onMove }: { cat: Category; all: Category[]; onMove: (id: string, dir: -1 | 1) => void }) {
   const [name, setName] = useState(cat.name);
   const [showColors, setShowColors] = useState(false);
-  const [showEmoji, setShowEmoji] = useState(false);
   useEffect(() => setName(cat.name), [cat.name]);
   const save = (patch: Partial<Category>) => void A.saveCategory({ ...cat, ...patch }).catch(A.reportError);
   return (
@@ -137,10 +136,7 @@ function CategoryRow({ cat, all, onMove }: { cat: Category; all: Category[]; onM
         )}
       </div>
       <div className="cat-name-cell">
-        <button className={`emoji-trigger ${cat.emoji ? "has" : ""}`} onClick={() => setShowEmoji((v) => !v)} title={cat.emoji ? "Change icon" : "Add an icon"} aria-label="Category icon">
-          {cat.emoji ?? <SmilePlus size={14} />}
-        </button>
-        {showEmoji && <EmojiPicker canClear={!!cat.emoji} onPick={(emoji) => save({ emoji })} onClose={() => setShowEmoji(false)} />}
+        <IconButton icon={cat.icon} color={cat.color} label="Category icon" onPick={(icon) => save({ icon })} />
         <input className="field bare" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== cat.name && save({ name: name.trim() })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Category name" />
       </div>
       <select className="select sm" value={cat.parentId ?? ""} onChange={(e) => save({ parentId: e.target.value || null })} aria-label="Parent category">

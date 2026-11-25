@@ -1,11 +1,17 @@
 // Small shared UI primitives.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Category } from "../domain/types";
+import { Icon, iconExists } from "./icons";
 
-export function CatDot({ color, size = 8, emoji }: { color: string; size?: number; emoji?: string | null }) {
-  // A category with an icon shows the emoji in place of the colour dot
-  if (emoji) return <span className="cat-emoji" style={{ fontSize: Math.max(11, size + 5) }} aria-hidden="true">{emoji}</span>;
+export function CatDot({ color, size = 8, icon }: { color: string; size?: number; icon?: string | null }) {
+  // A category, preset or block with an icon shows the Lucide icon, tinted with its colour, in place of the dot
+  if (iconExists(icon)) return <span className="cat-icon" style={{ color }} aria-hidden="true"><Icon name={icon} size={Math.max(12, size + 5)} /></span>;
   return <span className="cat-dot" style={{ background: color, width: size, height: size }} />;
+}
+
+/** How an item looks: its own colour and icon (presets, and blocks copied from them), else its category's. */
+export function lookOf(item: { color?: string | null; icon?: string | null } | null | undefined, cat: Pick<Category, "color" | "icon"> | null | undefined) {
+  return { color: item?.color || cat?.color || "#888", icon: item?.icon ?? cat?.icon ?? null };
 }
 
 export function catVars(color: string): CSSProperties {
@@ -42,7 +48,7 @@ export function CategorySelect(props: { categories: Category[]; value: string; o
   const current = props.categories.find((c) => c.id === props.value);
   return (
     <div className="cat-select" style={catVars(current?.color ?? "#888")}>
-      <CatDot color={current?.color ?? "#888"} emoji={current?.emoji} />
+      <CatDot color={current?.color ?? "#888"} icon={current?.icon} />
       <select value={props.value} onChange={(e) => props.onChange(e.target.value)} aria-label="Category">
         {options.map((c) => (
           <option key={c.id} value={c.id}>

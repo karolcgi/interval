@@ -67,7 +67,7 @@ export function ItemContextMenu(p: Props) {
             {categories
               .filter((c) => !c.archivedAt)
               .map((c) => (
-                <MenuItem key={c.id} icon={<CatDot color={c.color} emoji={c.emoji} />} label={c.name} hint={c.shortcut ?? undefined} checked={c.id === item.categoryId} onClick={run(() => setCategory(c.id))} />
+                <MenuItem key={c.id} icon={<CatDot color={c.color} icon={c.icon} />} label={c.name} hint={c.shortcut ?? undefined} checked={c.id === item.categoryId} onClick={run(() => setCategory(c.id))} />
               ))}
           </div>
         )}
@@ -165,7 +165,7 @@ export function TemplateBlockMenu(p: { x: number; y: number; id: Id; onClose: ()
             {categories
               .filter((c) => !c.archivedAt)
               .map((c) => (
-                <MenuItem key={c.id} icon={<CatDot color={c.color} emoji={c.emoji} />} label={c.name} checked={c.id === t.categoryId} onClick={run(() => L.updateTemplateBlock(t.id, { categoryId: c.id }, "Change category"))} />
+                <MenuItem key={c.id} icon={<CatDot color={c.color} icon={c.icon} />} label={c.name} checked={c.id === t.categoryId} onClick={run(() => L.updateTemplateBlock(t.id, { categoryId: c.id }, "Change category"))} />
               ))}
           </div>
         )}

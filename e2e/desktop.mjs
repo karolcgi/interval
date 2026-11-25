@@ -137,7 +137,7 @@ try {
   await waitFor(() => js("return !document.querySelector('.focus-panel.is-running')"), "timer idle after abandon");
   ok("Abandon discards the running break in the real app");
 
-  // v0.7: migration v7 on real SQLite; presets and weekly template round-trip through the Rust database
+  // v0.7/v0.8: migrations on real SQLite (v8: Lucide icons, preset/block colours) through the Rust database
   await click(".topbar .tab", "Template");
   await waitFor(() => js("return !!document.querySelector('.template-view .timeline.template-mode')"), "Template tab");
   await click(".topbar .tab", "Presets");
@@ -145,12 +145,12 @@ try {
   const rows = await jsAsync(
     `const done = arguments[arguments.length - 1];
      const inv = window.__TAURI_INTERNALS__.invoke;
-     inv("db_select", { sql: "SELECT (SELECT COUNT(*) FROM activity_presets) AS p, (SELECT COUNT(*) FROM week_template_blocks) AS w, (SELECT MAX(version) FROM schema_migrations) AS v", params: [] })
+     inv("db_select", { sql: "SELECT (SELECT COUNT(*) FROM activity_presets) AS p, (SELECT COUNT(*) FROM week_template_blocks) AS w, (SELECT MAX(version) FROM schema_migrations) AS v, (SELECT COUNT(*) FROM pragma_table_info('blocks') WHERE name IN ('icon','color')) AS bc", params: [] })
        .then((r) => done(r), (e) => done({ err: String(e) }));`,
   );
-  if (!Array.isArray(rows) || Number(rows[0]?.v) !== 7) throw new Error(`schema should be v7: ${JSON.stringify(rows)}`);
+  if (!Array.isArray(rows) || Number(rows[0]?.v) !== 8 || Number(rows[0]?.bc) !== 2) throw new Error(`schema should be v8 with block icon/colour: ${JSON.stringify(rows)}`);
   await click(".topbar .tab", "Today");
-  ok("Top tabs work in the real app; database migrated to v7 (presets and weekly template tables)");
+  ok("Top tabs work in the real app; database migrated to v8 (presets, template, icons and colours)");
 
   const errs = await js("return window.__errors || []");
   if (errs.length) throw new Error(errs.join("\n"));

@@ -333,7 +333,7 @@ fn mini_size(layout: &str) -> (f64, f64) {
     if layout == "compact" {
         (188.0, 40.0)
     } else {
-        (288.0, 118.0)
+        (288.0, 138.0) // v0.8: + quick note line and the bottom arrow
     }
 }
 

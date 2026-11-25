@@ -3,7 +3,7 @@
 // broadcasts and sends commands back. Neither runs a timer of its own; the clock is derived from the
 // snapshot's timestamps, so every window shows the same time.
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, Pause, Pencil, Pin, PinOff, Play, SmilePlus, Square, Trash2, X } from "lucide-react";
+import { AppWindow, ChevronDown, CornerDownLeft, Pause, Pin, PinOff, Play, Square, Trash2, X } from "lucide-react";
 import { clockValue, isBreakStatus, progressValue, type TimerSnapshot } from "../domain/focus";
 import { fmtClock, fmtDuration } from "../domain/format";
 import { closeWindow, miniExpand, onSnapshot, popupFit, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
@@ -11,7 +11,7 @@ import type { TimerCommand } from "../state/focus";
 import { isTauri } from "../platform";
 import { AbandonConfirm, CycleDots } from "./FocusPanel";
 import { AnnotateBox } from "./Annotate";
-import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./EmojiPicker";
+import { Icon } from "./icons";
 
 function useBroadcast(): TimerBroadcast | null {
   const [snap, setSnap] = useState<TimerBroadcast | null>(null);
@@ -42,7 +42,7 @@ function useWindowDrag() {
   const start = useRef<{ x: number; y: number } | null>(null);
   return {
     onPointerDown: (e: React.PointerEvent) => {
-      if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+      if (e.button !== 0 || (e.target as HTMLElement).closest("button, input, textarea, select")) return;
       start.current = { x: e.screenX, y: e.screenY };
     },
     onPointerMove: (e: React.PointerEvent) => {
@@ -54,7 +54,7 @@ function useWindowDrag() {
     },
     onPointerUp: () => (start.current = null),
     onDoubleClick: (e: React.MouseEvent) => {
-      if ((e.target as HTMLElement).closest("button")) return;
+      if ((e.target as HTMLElement).closest("button, input, textarea, select")) return;
       void restoreMain();
     },
   };
@@ -74,11 +74,11 @@ export function MiniTimerApp() {
     const el = rootRef.current;
     let last = 0;
     const fit = () => {
-      const h = Math.ceil(el?.querySelector(".mt-edit")?.getBoundingClientRect().bottom ?? el?.scrollHeight ?? 330) + 10;
+      const h = Math.ceil(el?.querySelector(".mt-toggle")?.getBoundingClientRect().bottom ?? el?.scrollHeight ?? 360) + 3;
       if (Math.abs(h - last) > 2) (last = h), void miniExpand(true, h);
     };
     fit();
-    // Refit when the edit view grows or shrinks (emoji picker, abandon confirm, break vs focus)
+    // Refit when the edit view grows or shrinks (abandon confirm, break vs focus)
     const edit = el?.querySelector(".mt-edit");
     if (!edit || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(fit);
@@ -143,9 +143,6 @@ export function MiniTimerApp() {
             <button className={`mt-close ${snap.ui.onTop ? "on" : ""}`} onClick={() => send({ type: "onTop", on: !snap.ui.onTop })} aria-label={snap.ui.onTop ? "Stop keeping on top" : "Keep on top"} aria-pressed={snap.ui.onTop} title={snap.ui.onTop ? "On top of other windows (click to release)" : "Keep on top of other windows"}>
               {snap.ui.onTop ? <Pin size={11} /> : <PinOff size={11} />}
             </button>
-            <button className={`mt-close ${editing ? "on" : ""}`} onClick={() => setEditing(!editing)} aria-label="Edit session" aria-expanded={editing} title="Name, category, length">
-              <Pencil size={11} />
-            </button>
             <button className="mt-close" onClick={() => void restoreMain()} aria-label="Open Interval" title="Open Interval">
               <AppWindow size={11} />
             </button>
@@ -154,7 +151,7 @@ export function MiniTimerApp() {
             </button>
           </div>
           <div className="mt-row">
-            <span className="mt-clock" role="timer">
+            <span className={`mt-clock ${running ? "live" : ""}`} role="timer">
               {value}
             </span>
             <span className="mt-actions">
@@ -172,7 +169,11 @@ export function MiniTimerApp() {
             </span>
             {snap.next && <span className="mt-next">Next · {snap.next}</span>}
           </div>
+          <MiniNote send={send} />
           {editing && <MiniEdit snap={snap} send={send} onDone={() => setEditing(false)} />}
+          <button className={`mt-toggle ${editing ? "open" : ""}`} onClick={() => setEditing(!editing)} aria-label={editing ? "Hide name, category and length" : "Name, category, length"} aria-expanded={editing} title={editing ? "Hide" : "Name, category, length"}>
+            <ChevronDown size={13} />
+          </button>
         </>
       )}
     </div>
@@ -180,6 +181,40 @@ export function MiniTimerApp() {
 }
 
 const LENGTHS = [15, 25, 50, 90];
+
+/** Always-visible note line: Enter adds a timestamped note to today's day log (in the accent colour). */
+function MiniNote({ send }: { send: (cmd: TimerCommand) => void }) {
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+  useEffect(() => {
+    if (!sent) return;
+    const t = setTimeout(() => setSent(false), 1600);
+    return () => clearTimeout(t);
+  }, [sent]);
+  const submit = () => {
+    const t = text.trim();
+    if (!t) return;
+    send({ type: "note", text: t, at: Date.now() });
+    setText("");
+    setSent(true);
+  };
+  return (
+    <form className={`mt-note ${sent ? "sent" : ""}`} onSubmit={(e) => (e.preventDefault(), submit())}>
+      <input
+        className="mt-note-input"
+        value={text}
+        maxLength={500}
+        placeholder={sent ? "Added to the day log" : "Note…"}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && (setText(""), (e.target as HTMLInputElement).blur())}
+        aria-label="Quick note for the day log"
+      />
+      <button type="submit" className="mt-note-send" disabled={!text.trim()} aria-label="Add note" title="Add to the day log (Enter)">
+        <CornerDownLeft size={11} />
+      </button>
+    </form>
+  );
+}
 
 /** The floating timer's edit view: name the session, pick its category and length, abandon it. */
 function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: TimerCommand) => void; onDone: () => void }) {
@@ -190,7 +225,6 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
   const [cat, setCat] = useState<string | null>(snap.categoryId ?? snap.ui.categories[0]?.id ?? null);
   const [custom, setCustom] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const [emojiOpen, setEmojiOpen] = useState(false);
   useEffect(() => setTitle(snap.title ?? ""), [snap.title]);
   useEffect(() => {
     if (!onBreak && snap.categoryId) setCat(snap.categoryId);
@@ -210,9 +244,6 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
       {!onBreak && (
         <>
           <div className="mt-name-row">
-          <button className={`emoji-trigger sm ${startsWithEmoji(title) ? "has" : ""}`} onClick={() => setEmojiOpen((v) => !v)} aria-label="Session icon" title="Put an emoji in front of the name">
-            {leadingEmoji(title) ?? <SmilePlus size={13} />}
-          </button>
           <input
             className="mt-input"
             placeholder="Name this session…"
@@ -227,23 +258,11 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
             aria-label="Session name"
           />
           </div>
-          {emojiOpen && (
-            <EmojiPicker
-              className="inline"
-              canClear={startsWithEmoji(title)}
-              onPick={(e) => {
-                const next = withLeadingEmoji(title, e);
-                setTitle(next);
-                if (!idle && !onBreak) send({ type: "target", title: next });
-              }}
-              onClose={() => setEmojiOpen(false)}
-            />
-          )}
           <div className="mt-cats" role="listbox" aria-label="Category">
             {snap.ui.categories.map((c) => (
               <button key={c.id} role="option" aria-selected={c.id === cat} className={`mt-cat ${c.id === cat ? "on" : ""}`} style={{ ["--cc" as string]: c.color }} onClick={() => pickCat(c.id)} title={c.name}>
-                <span className="mt-cat-dot" aria-hidden>
-                  {c.icon ?? ""}
+                <span className={`mt-cat-dot ${c.icon ? "has" : ""}`} aria-hidden>
+                  <Icon name={c.icon} size={12} />
                 </span>
                 <span className="mt-cat-name">{c.name}</span>
               </button>

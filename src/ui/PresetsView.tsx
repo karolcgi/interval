@@ -6,7 +6,9 @@ import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import * as L from "../state/library";
 import type { ActivityPreset, Id } from "../domain/types";
-import { CatDot, CategorySelect, catVars, Segmented } from "./bits";
+import { CatDot, CategorySelect, catVars, lookOf, Segmented } from "./bits";
+import { ColorField, IconButton } from "./IconPicker";
+import { PALETTE } from "./CategoriesView";
 import { TagInput } from "./TagInput";
 import { filterPresets, fmtMinutes, PresetMenu, useReorderTarget } from "./PresetLibrary";
 import { beginPresetDrag } from "./presetDrag";
@@ -70,7 +72,7 @@ export function PresetsView() {
             </button>
             {usedCats.map((c) => (
               <button key={c.id} className={`chip cat-chip ${cat === c.id ? "on" : ""}`} style={catVars(c.color)} onClick={() => setCat(cat === c.id ? "" : c.id)} aria-pressed={cat === c.id}>
-                <CatDot color={c.color} emoji={c.emoji} /> {c.name}
+                <CatDot color={c.color} icon={c.icon} /> {c.name}
               </button>
             ))}
           </div>
@@ -104,6 +106,7 @@ export function PresetsView() {
           <div ref={listRef} className={`plib-${viewMode}`} role="list" aria-label="Presets">
             {shown.map((p, i) => {
               const c = catById.get(p.categoryId);
+              const look = lookOf(p, c);
               const tagNames = p.tagIds.map((t) => tagById.get(t)?.name).filter(Boolean);
               return (
                 <div
@@ -111,14 +114,14 @@ export function PresetsView() {
                   role="listitem"
                   data-preset={p.id}
                   className={`preset-card ${editing === p.id ? "on" : ""} ${dragging === p.id ? "dragging" : ""} ${insertAt === i ? "insert-before" : ""} ${insertAt === shown.length && i === shown.length - 1 ? "insert-after" : ""}`}
-                  style={catVars(c?.color ?? "#888")}
+                  style={catVars(look.color)}
                   onPointerDown={(e) => (custom ? beginPresetDrag(e, p.id, () => store.set({ presetEditing: p.id })) : undefined)}
                   onClick={() => !custom && store.set({ presetEditing: p.id })}
                   onContextMenu={(e) => (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, id: p.id }))}
                   aria-label={`Preset ${p.name}`}
                 >
                   {custom && <GripVertical size={13} className="preset-grip" aria-hidden />}
-                  <CatDot color={c?.color ?? "#888"} emoji={c?.emoji} size={9} />
+                  <CatDot color={look.color} icon={look.icon} size={9} />
                   <div className="preset-card-main">
                     <div className="preset-card-name">{p.name}</div>
                     <div className="preset-card-meta muted small">
@@ -174,7 +177,7 @@ function PresetEditor({ id }: { id: Id | "new" }) {
   const dirty = !existing || JSON.stringify(existing) !== JSON.stringify(draft);
   const cat = categories.find((c) => c.id === draft.categoryId);
   return (
-    <aside className="panel plib-editor" aria-label={id === "new" ? "New preset" : "Edit preset"} style={catVars(cat?.color ?? "#888")}>
+    <aside className="panel plib-editor" aria-label={id === "new" ? "New preset" : "Edit preset"} style={catVars(lookOf(draft, cat).color)}>
       <div className="panel-inner">
         <div className="inspector-head">
           <span className="eyebrow">{id === "new" ? "New preset" : "Edit preset"}</span>
@@ -190,13 +193,21 @@ function PresetEditor({ id }: { id: Id | "new" }) {
           }}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <label className="pf-row">
+          <div className="pf-row">
             <span className="pf-label">Name</span>
-            <input ref={nameRef} className="field" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Houdini studying" maxLength={120} aria-label="Preset name" />
-          </label>
+            <div className="pf-name">
+              <IconButton icon={draft.icon} color={lookOf(draft, cat).color} label="Preset icon" onPick={(icon) => set({ icon })} />
+              <input ref={nameRef} className="field" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Houdini studying" maxLength={120} aria-label="Preset name" />
+            </div>
+          </div>
           <div className="pf-row">
             <span className="pf-label">Category</span>
             <CategorySelect categories={categories} value={draft.categoryId} onChange={(categoryId) => set({ categoryId })} includeArchivedId={existing?.categoryId} />
+          </div>
+          <div className="pf-row">
+            <span className="pf-label">Colour</span>
+            <ColorField value={draft.color} fallback={cat?.color ?? "#888"} palette={PALETTE} onChange={(color) => set({ color })} />
+            <span className="pf-hint muted small">Blocks dropped from this preset keep its colour.</span>
           </div>
           <div className="pf-row">
             <span className="pf-label">Duration</span>

@@ -32,6 +32,8 @@ export interface RecurrenceRule {
   startsOn: string; // YYYY-MM-DD, first day the rule may produce
   endsOn: string | null; // YYYY-MM-DD inclusive, or null = forever
   materializedUntil: string | null; // last day for which occurrences were generated
+  icon?: string | null; // v0.8: copied onto each occurrence
+  color?: string | null;
   createdAt: number;
 }
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { ENTRY_KINDS, type EntryKind, type Id, type JournalEntry } from "../domain/types";
 import { KIND_ICON, KIND_LABEL } from "../domain/entries";
+import { Icon } from "./icons";
 import { fmtTime } from "../domain/format";
 import { useApp } from "../state/store";
 import * as J from "../state/journal";
@@ -52,13 +53,13 @@ function KindPicker({ value, onChange }: { value: EntryKind; onChange: (k: Entry
   return (
     <span className="kind-picker">
       <button className="kind-btn" onClick={() => setOpen((v) => !v)} aria-label={`Note type: ${KIND_LABEL[value]}`} aria-expanded={open} title={KIND_LABEL[value]}>
-        {KIND_ICON[value]}
+        <Icon name={KIND_ICON[value]} size={14} />
       </button>
       {open && (
         <ul className="popover kind-menu" role="listbox" aria-label="Note type" onMouseLeave={() => setOpen(false)}>
           {ENTRY_KINDS.map((k) => (
             <li key={k} role="option" aria-selected={k === value} className={k === value ? "on" : ""} onClick={() => (onChange(k), setOpen(false))}>
-              <span aria-hidden>{KIND_ICON[k]}</span> {KIND_LABEL[k]}
+              <Icon name={KIND_ICON[k]} size={13} /> {KIND_LABEL[k]}
             </li>
           ))}
         </ul>

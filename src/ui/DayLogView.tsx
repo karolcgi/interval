@@ -1,12 +1,12 @@
 // Day log: an automatic diary of what actually happened, built from recorded sessions.
 // Browse any past day, copy it as Markdown or save it as YYYY-MM-DD.md (Obsidian's daily-note name).
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, ClipboardCopy, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardCopy, Download, StickyNote } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as repo from "../db/repo";
-import type { Block, Session } from "../domain/types";
-import { buildDayLog, dayLogFileName, dayLogMarkdown, rangeLogMarkdown, type DayLog } from "../domain/daylog";
+import type { Block, JournalEntry, Session } from "../domain/types";
+import { buildDayLog, dayLogFileName, dayLogItems, dayLogMarkdown, rangeLogMarkdown, type DayLog } from "../domain/daylog";
 import { addDays, addMonths, dayKey, isSameDay, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { fmt, fmtDuration, fmtTime } from "../domain/format";
 import { saveTextFile } from "../platform";
@@ -29,20 +29,23 @@ export async function copyText(text: string) {
   }
 }
 
-/** Sessions and blocks for [start, end), reloaded when the running session or the visible data changes. */
+/** Sessions, blocks and diary entries for [start, end), reloaded when the running session, the visible data or the notes change. */
 export function useRecorded(start: number, end: number) {
   const db = useApp((s) => s.db);
   const runningId = useApp((s) => s.running?.id);
   const version = useApp((s) => s.sessions);
-  const [data, setData] = useState<{ sessions: Session[]; blocks: Block[] } | null>(null);
+  const journalRev = useApp((s) => s.journalRev);
+  const [data, setData] = useState<{ sessions: Session[]; blocks: Block[]; journal: JournalEntry[] } | null>(null);
   useEffect(() => {
     if (!db) return;
     let alive = true;
-    void Promise.all([repo.listSessions(db, start, end), repo.listBlocks(db, start, end)]).then(([sessions, blocks]) => alive && setData({ sessions, blocks }));
+    void Promise.all([repo.listSessions(db, start, end), repo.listBlocks(db, start, end), repo.listEntries(db, start, end)]).then(
+      ([sessions, blocks, journal]) => alive && setData({ sessions, blocks, journal }),
+    );
     return () => {
       alive = false;
     };
-  }, [db, start, end, runningId, version]);
+  }, [db, start, end, runningId, version, journalRev]);
   return data;
 }
 
@@ -51,7 +54,7 @@ export function useDayLog(day: number): DayLog | null {
   const tags = useApp((s) => s.tags);
   const now = useNow(30_000);
   const data = useRecorded(day, addDays(day, 1));
-  return useMemo(() => (data ? buildDayLog(day, data.sessions, data.blocks, categories, tags, now) : null), [data, day, categories, tags, now]);
+  return useMemo(() => (data ? buildDayLog(day, data.sessions, data.blocks, categories, tags, now, data.journal) : null), [data, day, categories, tags, now]);
 }
 
 export function DayLogView() {
@@ -74,8 +77,8 @@ export function DayLogView() {
     if (!recent) return [];
     const out: Array<{ day: number; ms: number }> = [];
     for (let d = today; d >= recentStart; d = addDays(d, -1)) {
-      const l = buildDayLog(d, recent.sessions, recent.blocks, categories, tags, now);
-      if (l.entries.length) out.push({ day: d, ms: l.totalMs });
+      const l = buildDayLog(d, recent.sessions, recent.blocks, categories, tags, now, recent.journal);
+      if (l.entries.length || l.notes.length) out.push({ day: d, ms: l.totalMs });
     }
     return out;
   }, [recent, today, recentStart, categories, tags, now]);
@@ -93,9 +96,9 @@ export function DayLogView() {
     if (!db) return;
     const start = which === "week" ? startOfWeek(day, weekStartsOn) : startOfMonth(day);
     const end = which === "week" ? addDays(start, 7) : addMonths(start, 1);
-    const [sessions, blocks] = await Promise.all([repo.listSessions(db, start, end), repo.listBlocks(db, start, end)]);
+    const [sessions, blocks, journal] = await Promise.all([repo.listSessions(db, start, end), repo.listBlocks(db, start, end), repo.listEntries(db, start, end)]);
     const logs: DayLog[] = [];
-    for (let d = start; d < end; d = addDays(d, 1)) logs.push(buildDayLog(d, sessions, blocks, categories, tags, Date.now()));
+    for (let d = start; d < end; d = addDays(d, 1)) logs.push(buildDayLog(d, sessions, blocks, categories, tags, Date.now(), journal));
     const title = which === "week" ? `# Week of ${fmt.monthDay(start)} ${new Date(start).getFullYear()}` : `# ${fmt.monthYear(start)}`;
     const name = which === "week" ? `${dayKey(start)} week.md` : `${dayKey(start).slice(0, 7)}.md`;
     const path = await saveTextFile(name, `${title}\n\n${rangeLogMarkdown(logs, { timeFormat })}`, "md");
@@ -173,11 +176,22 @@ export function DayLogView() {
 }
 
 export function DayLogTimeline({ log, timeFormat, compact = false }: { log: DayLog; timeFormat: "24h" | "12h"; compact?: boolean }) {
-  if (!log.entries.length) return <p className="muted small">Nothing recorded{compact ? " yet" : ""}.</p>;
+  if (!log.entries.length && !log.notes.length) return <p className="muted small">Nothing recorded{compact ? " yet" : ""}.</p>;
   return (
     <>
       <ol className={`daylog-list ${compact ? "compact" : ""}`}>
-        {log.entries.map((e) => (
+        {dayLogItems(log).map((item) => {
+          if (item.kind === "note")
+            return (
+              <li key={item.note.id} className="dl-note" title="Quick note from the floating timer">
+                <span className="dl-time">{fmtTime(item.note.at, timeFormat)}</span>
+                <StickyNote size={11} className="dl-note-icon" aria-hidden />
+                <span className="dl-title">{item.note.text}</span>
+                <span />
+              </li>
+            );
+          const e = item.entry;
+          return (
           <li key={e.sessionIds[0]} className={e.isBreak ? "brk" : ""}>
             <span className="dl-time">
               {fmtTime(e.start, timeFormat)}–{e.running ? "now" : fmtTime(e.end, timeFormat)}
@@ -190,7 +204,8 @@ export function DayLogTimeline({ log, timeFormat, compact = false }: { log: DayL
             </span>
             <span className="dl-dur muted">{fmtDuration(e.end - e.start, { compact: true })}</span>
           </li>
-        ))}
+          );
+        })}
       </ol>
       <div className="daylog-total small">
         <strong>{fmtDuration(log.totalMs, { compact: true })}</strong>
@@ -217,7 +232,7 @@ export function PanelDayLog() {
         <span className="sec-actions">
           <button
             className="link-btn"
-            disabled={!log?.entries.length}
+            disabled={!log?.entries.length && !log?.notes.length}
             onClick={() => log && void copyText(dayLogMarkdown(log, { timeFormat })).then(() => A.toast("Day log copied as Markdown"))}
           >
             Copy
