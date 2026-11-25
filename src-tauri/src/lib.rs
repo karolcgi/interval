@@ -120,6 +120,7 @@ pub fn run() {
             db::db_batch,
             db::db_backup,
             db::db_backup_daily,
+            db::write_vault_file,
             db::db_close,
             db::write_text_file,
             db::read_text_file,

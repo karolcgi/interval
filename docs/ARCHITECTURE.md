@@ -42,6 +42,9 @@ src/
     focus.ts       Pomodoro/Flowtime state machine (pure)
     budgets.ts     budget periods, progress, history
     analytics.ts   heatmap days, active-day runs
+    daylog.ts      day log entries + Markdown (with optional frontmatter)
+    progression.ts ledger of per-day hours per tag/category, milestones, weekly streaks, achievements
+    summary.ts     week/month/year summaries, comparisons, Markdown with Dataview frontmatter
     format.ts csv.ts
   db/
     driver.ts sqljs-driver.ts tauri-driver.ts
@@ -54,12 +57,16 @@ src/
     actions.ts     every user action; undo/redo; timer; sleep detection; backups
     planning.ts    recurrence materialisation, this-and-following edits, day templates
     focus.ts       focus engine: tickFocus(now), phase transitions, break sessions
+    lifetime.ts    all-time sessions + derived ledger/achievements (hooks)
+    obsidian.ts    vault export (manual + automatic)
+    shortcuts.ts   rebindable shortcut registry
   ui/              React components (Timeline.tsx is the core interaction surface)
   bootstrap.ts     picks driver, migrates, seeds, loads
   platform.ts      file dialogs, external links, boot prefs (Tauri vs browser)
 src-tauri/         Rust shell: db.rs (SQLite), lib.rs (plugins, tray, commands)
 e2e/acceptance.mjs Phase 1 acceptance workflow in a real browser
 e2e/phase2.mjs     Phase 2 workflow: recurrence, templates, Pomodoro, Flowtime, budgets, planning/review
+e2e/phase3.mjs     Phase 3 workflow on demo data: progress, achievements, reviews, year in review, shortcuts
 ```
 
 ## 3. Data model
@@ -144,6 +151,8 @@ mode. The `?demo=1` / `?db=<key>` URL parameters exist for browser preview and t
 - `e2e/acceptance.mjs`: spec §21 end to end with a controlled clock, including reload one week later.
 - `e2e/phase2.mjs`: recurrence (incl. deleted-stays-deleted across reload), templates with undo, Pomodoro and Flowtime
   under a fake clock, budgets, morning planning and evening review.
+- `e2e/phase3.mjs`: progress and achievements on demo data, personal achievement, hiding a skill, weekly review vs
+  last week / a year ago with Markdown frontmatter, month and year in review, shortcut rebinding with conflicts.
 
 Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always exercised.
 
@@ -204,7 +213,25 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - **Backups**: `db_backup_daily(keep, dir?, force?)` uses SQLite's online backup API into
   `<dir>/<name>-YYYY-MM-DD.db`, once per day, pruning to the newest `keep`. Runs at startup; "Back up now" forces it.
 
+## Phase 3 design notes
+
+- **Nothing about progress is stored.** `buildLedger` resolves overlaps across all sessions once, splits them by local
+  day and accumulates per tag, per category (a subcategory's time also counts for every ancestor) and for all
+  non-break time. Milestones, levels, streaks, records and achievements are pure functions of that ledger, so editing
+  or deleting old sessions re-derives everything consistently. The `milestones` table from v1 stays unused.
+- **Healthy by construction**: streaks are weekly (1h+ in a week; the running week never breaks a streak), intentional
+  hours count at most `workdayHours` per day, there are no daily maximum records, and "balanced weeks" reward 3+ active
+  days with no day past the working day.
+- **Migration v3** adds `achievements` (personal achievements confirmed by hand). Included in JSON export/import.
+- **Obsidian**: Rust command `write_vault_file(dir, rel, contents)` creates folders, rejects `..`/absolute paths and
+  refuses to replace any file without the `generator: interval` marker. Automatic export keeps a cursor in the
+  `obsidian.auto` setting so each day/week is written once (user edits to generated notes survive).
+- **Shortcuts**: `settings.shortcuts` holds overrides only (`action -> combo`); a combo maps to one action. Ctrl
+  shortcuts, arrows, Esc and Delete are reserved.
+- **Right area**: `RightPanel` renders `[properties][day overview]`; the shell's third grid column is `auto`, so the
+  timeline gives up room when a block is selected instead of being overlaid.
+
 ## Roadmap notes
 
-Phase 3: progression and achievements can derive from `computeStats` and `budgetHistory`. Markdown export can reuse
-`computeStats` and `format.ts`; write files with the `write_text_file` command.
+Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.
+Spec "possible future enhancements": activity detection, calendar sync, ActivityWatch import.

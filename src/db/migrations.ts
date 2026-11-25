@@ -142,6 +142,24 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX idx_blocks_recurrence ON blocks(recurrence_id)`,
     ],
   },
+  {
+    version: 3,
+    name: "phase 3: personal achievements",
+    up: [
+      // Achievements the user records by hand ("time spent does not equal skill acquired").
+      // Automatic achievements and hour milestones are derived from sessions and never stored.
+      `CREATE TABLE achievements (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        note TEXT,
+        target_type TEXT CHECK (target_type IN ('category','tag')),
+        target_id TEXT,
+        achieved_on TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX idx_achievements_day ON achievements(achieved_on)`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

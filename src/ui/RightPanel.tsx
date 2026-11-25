@@ -18,16 +18,31 @@ import { openExternal } from "../platform";
 import { PanelDayLog } from "./DayLogView";
 import { findMergeCandidate } from "../domain/calendar";
 
-export function RightPanel() {
+/**
+ * The right-hand area. The day overview stays put; selecting a block or session slides its
+ * properties out to the LEFT of it (the area widens and the timeline gives up the room), so the
+ * overview is never covered. Esc or clicking empty timeline closes the properties.
+ */
+export function RightPanel({ overview = true }: { overview?: boolean }) {
   const selection = useApp((s) => s.selection);
   const blocks = useApp((s) => s.blocks);
   const sessions = useApp((s) => s.sessions);
   const block = selection?.kind === "block" ? blocks.find((b) => b.id === selection.id) : undefined;
   const session = selection?.kind === "session" ? sessions.find((s) => s.id === selection.id) : undefined;
+  if (!overview && !block && !session) return null;
   return (
-    <aside className="panel" aria-label="Details">
-      {block ? <BlockInspector key={block.id} block={block} /> : session ? <SessionInspector key={session.id} session={session} /> : <DayOverview />}
-    </aside>
+    <div className="panel-area">
+      {(block || session) && (
+        <aside className="panel inspector-panel" aria-label="Properties">
+          {block ? <BlockInspector key={block.id} block={block} /> : session ? <SessionInspector key={session.id} session={session} /> : null}
+        </aside>
+      )}
+      {overview && (
+        <aside className="panel" aria-label="Details">
+          <DayOverview />
+        </aside>
+      )}
+    </div>
   );
 }
 

@@ -47,6 +47,7 @@ export async function boot() {
     if (db.kind === "tauri") {
       // Daily rolling backup to the configured folder. Failure is reported but never blocks the app.
       void backupNow(false);
+      void import("./state/obsidian").then((o) => o.autoExport()).catch((e) => console.warn(e));
       // Check for a new version shortly after start, then every 6 hours.
       const { checkForUpdate } = await import("./updater");
       setTimeout(() => void checkForUpdate(), 5_000);

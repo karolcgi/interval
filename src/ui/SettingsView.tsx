@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, FolderOpen, Upload } from "lucide-react";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import { exportCsv, exportJson, importCsv, importJson } from "../db/io";
+import { comboOf, keyOf, prettyKey, RESERVED, SHORTCUT_ACTIONS } from "../state/shortcuts";
 import { bootPrefs, isTauri, openTextFile, pickDirectory, revealDataFolder, saveTextFile } from "../platform";
 import { dayKey } from "../domain/time";
 import { Segmented } from "./bits";
@@ -248,24 +249,57 @@ export function SettingsView() {
         </>
       )}
 
+      <h2 className="section-title">Progress</h2>
+      <div className="settings-block">
+        <Row label="Milestone ladder" hint="Lifetime hours at which a skill or area levels up. Comma-separated.">
+          <LadderField value={s.milestoneHours} onChange={(milestoneHours) => set({ milestoneHours })} />
+        </Row>
+      </div>
+
+      <h2 className="section-title">Obsidian</h2>
+      <div className="settings-block">
+        <Row
+          label="Notes folder"
+          hint={
+            isTauri()
+              ? "A folder inside your vault. Interval writes Days/YYYY-MM-DD.md, Weeks/YYYY-Www.md, Months/ and Years/ there, with hours in the frontmatter for Dataview. It only ever replaces notes it wrote itself."
+              : "Desktop app only. In the browser preview, notes download as files."
+          }
+        >
+          <code className="path">{s.obsidianDir ?? "not set"}</code>
+          {isTauri() && (
+            <button className="btn btn-outline sm" onClick={() => void pickDirectory().then((obsidianDir) => obsidianDir && set({ obsidianDir }))}>
+              Choose…
+            </button>
+          )}
+          {s.obsidianDir && (
+            <button className="btn btn-ghost sm" onClick={() => set({ obsidianDir: null, obsidianAuto: false })}>
+              Clear
+            </button>
+          )}
+        </Row>
+        <Row label="Write automatically" hint="At startup and after the evening review: each finished day's log, and last week's summary when a new week starts. Each note is written once, so your edits stay.">
+          <input type="checkbox" checked={s.obsidianAuto} disabled={!s.obsidianDir} onChange={(e) => set({ obsidianAuto: e.target.checked })} aria-label="Write notes to Obsidian automatically" />
+          {s.obsidianDir && s.obsidianAuto && (
+            <button className="btn btn-ghost sm" onClick={() => void import("../state/obsidian").then((o) => o.autoExport()).then((n) => A.toast(n ? `Wrote ${n} note${n > 1 ? "s" : ""}` : "Everything is already written"), A.reportError)}>
+              Write now
+            </button>
+          )}
+        </Row>
+      </div>
+
       <h2 className="section-title">Keyboard</h2>
+      <ShortcutEditor />
       <div className="settings-block shortcuts">
         {[
           ["Ctrl K", "Command palette & search"],
-          ["T", "Jump to today"],
-          ["← → or J K", "Previous / next day (or week, month)"],
-          ["D  W  M", "Day / week / month view"],
-          ["S  or Ctrl E", "Start / stop timer (selected block, or unscheduled)"],
+          ["← →", "Previous / next day (or week, month)"],
+          ["Ctrl E", "Start / stop timer"],
           ["1 – 9", "Pick category (in picker) or recategorise selection"],
-          ["F", "Focus mode (full-window timer)"],
-          ["C", "Confirm selected block as done"],
-          ["F2 / double-click", "Rename selected block"],
-          ["X", "Split selected block"],
           ["Ctrl D", "Duplicate selected block"],
           ["Ctrl C / Ctrl V", "Copy block / paste onto focused day"],
           ["Del", "Delete selection"],
           ["Ctrl Z / Ctrl Y", "Undo / redo"],
-          ["[  ]", "Toggle sidebar / details panel"],
           ["Alt + drag", "Copy a block while dragging"],
           ["Ctrl + scroll", "Zoom timeline"],
         ].map(([k, d]) => (
@@ -308,6 +342,77 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
         {hint && <div className="set-hint">{hint}</div>}
       </div>
       <div className="set-control">{children}</div>
+    </div>
+  );
+}
+
+function LadderField(p: { value: number[]; onChange: (v: number[]) => void }) {
+  const [v, setV] = useState(p.value.join(", "));
+  const commit = () => {
+    const nums = [...new Set(v.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0).map(Math.round))].sort((a, b) => a - b);
+    if (nums.length) p.onChange(nums);
+    setV((nums.length ? nums : p.value).join(", "));
+  };
+  return <input className="field ladder" value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Milestone hours" />;
+}
+
+function ShortcutEditor() {
+  const overrides = useApp((s) => s.settings.shortcuts);
+  const categories = useApp((s) => s.categories);
+  const [capturing, setCapturing] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!capturing) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") return setCapturing(null);
+      const combo = comboOf(e);
+      if (!combo) return;
+      if (RESERVED.has(combo)) {
+        setNote(`${prettyKey(combo)} is reserved.`);
+        return;
+      }
+      const next = { ...overrides };
+      // A key does one thing: whatever action had it loses it.
+      for (const a of SHORTCUT_ACTIONS) if (a.id !== capturing && keyOf(a.id, next) === combo) next[a.id] = "";
+      next[capturing] = combo;
+      for (const a of SHORTCUT_ACTIONS) if (next[a.id] === a.key) delete next[a.id];
+      const cat = categories.find((c) => !c.archivedAt && c.shortcut && c.shortcut.toLowerCase() === combo);
+      setNote(cat ? `${prettyKey(combo)} is also ${cat.name}'s category key; the action wins when a block is selected.` : null);
+      setCapturing(null);
+      void A.updateSettings({ shortcuts: next });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [capturing, overrides, categories]);
+  return (
+    <div className="settings-block shortcuts editable">
+      {SHORTCUT_ACTIONS.map((a) => {
+        const key = keyOf(a.id, overrides);
+        const changed = a.id in overrides;
+        return (
+          <div key={a.id} className="shortcut-row">
+            <button className={`kbd-btn ${capturing === a.id ? "capturing" : ""}`} onClick={() => (setNote(null), setCapturing(capturing === a.id ? null : a.id))} aria-label={`Shortcut for ${a.label}`}>
+              {capturing === a.id ? "Press a key…" : prettyKey(key)}
+            </button>
+            <span>{a.label}</span>
+            {changed && (
+              <button
+                className="link-btn"
+                onClick={() => {
+                  const next = { ...overrides };
+                  delete next[a.id];
+                  void A.updateSettings({ shortcuts: next });
+                }}
+              >
+                Reset to {prettyKey(a.key)}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {note && <p className="muted small">{note}</p>}
     </div>
   );
 }

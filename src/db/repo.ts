@@ -2,7 +2,7 @@
 // Mutation helpers return Statement[] so callers can compose atomic batches.
 
 import type { DbDriver, Statement } from "./driver";
-import type { Block, BlockStatus, Budget, Category, DailyNote, DayTemplate, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
+import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Id, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 
@@ -420,4 +420,36 @@ export function upsertBudgetStmt(b: Budget): Statement {
 
 export function deleteBudgetStmt(id: Id): Statement {
   return { sql: "DELETE FROM budgets WHERE id = ?", params: [id] };
+}
+
+// ------------------------------------------------------------ achievements
+
+function toAchievement(r: Row): PersonalAchievement {
+  return {
+    id: String(r.id),
+    title: String(r.title),
+    note: r.note == null ? null : String(r.note),
+    targetType: r.target_type == null ? null : (String(r.target_type) as "category" | "tag"),
+    targetId: r.target_id == null ? null : String(r.target_id),
+    achievedOn: String(r.achieved_on),
+    createdAt: Number(r.created_at),
+  };
+}
+
+export async function listAchievements(db: DbDriver): Promise<PersonalAchievement[]> {
+  return (await db.select<Row>("SELECT * FROM achievements ORDER BY achieved_on DESC, created_at DESC")).map(toAchievement);
+}
+
+export function upsertAchievementStmt(a: PersonalAchievement): Statement {
+  return {
+    sql: `INSERT INTO achievements (id, title, note, target_type, target_id, achieved_on, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET title=excluded.title, note=excluded.note, target_type=excluded.target_type,
+            target_id=excluded.target_id, achieved_on=excluded.achieved_on`,
+    params: [a.id, a.title, a.note, a.targetType, a.targetId, a.achievedOn, a.createdAt],
+  };
+}
+
+export function deleteAchievementStmt(id: Id): Statement {
+  return { sql: "DELETE FROM achievements WHERE id = ?", params: [id] };
 }

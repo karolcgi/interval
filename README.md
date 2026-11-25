@@ -47,7 +47,21 @@ No account, no network, no cloud. Your data is one SQLite file you own.
 | Analytics: 12-month heatmap, planned vs recorded, cumulative hours | ✅ |
 | Automatic daily backups to a folder you choose, configurable retention, Back up now | ✅ |
 
-Phase 3 (progression, achievements, Obsidian Markdown export) is next.
+## Phase 3 status
+
+| Area | State |
+|---|---|
+| Progress: lifetime hours per skill (tag) and area (category), levels on a configurable milestone ladder, hours to next milestone | ✅ |
+| Weekly consistency streaks (weeks, so rest days never break them), last-12-weeks strip | ✅ |
+| Achievements: hour milestones, 4/8/12/26/52-week streaks, intentional-hours milestones (capped at a working day per day), deep work sessions, balanced weeks | ✅ |
+| Personal achievements you confirm by hand, optionally tied to a skill | ✅ |
+| Records: longest session, longest weekly streak, best week per top skill (no daily high scores) | ✅ |
+| Reviews: weekly and monthly summaries compared with the previous period or the same period a year ago | ✅ |
+| Year in review: totals, months, every day of the year, skills gained, milestones | ✅ |
+| Obsidian: day logs and summaries written into a vault folder with Dataview frontmatter; never overwrites notes it didn't write | ✅ |
+| Rebindable keyboard shortcuts | ✅ |
+| Block properties open beside the day panel instead of replacing it | ✅ |
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 
 ---
@@ -124,9 +138,9 @@ because the build also produces the signed update package. Normally CI does this
 ### Tests
 
 ```powershell
-npm test               # 74 unit + integration tests (domain logic and real SQLite)
+npm test               # 82 unit + integration tests (domain logic and real SQLite)
 npx playwright install chromium   # once
-npm run e2e            # Phase 1 acceptance + Phase 2 workflow, driven through the UI
+npm run e2e            # Phase 1 acceptance + Phase 2 + Phase 3 workflows, driven through the UI
 npm run typecheck
 ```
 
@@ -178,7 +192,16 @@ To move to a new machine: copy `interval.db` (or import a JSON export).
   a whole week or month saves as one file. The details panel shows the selected day's log too.
 - **Daily ritual**: the details panel suggests planning in the morning and a review in the evening (turn it off in Settings).
 
-Keyboard reference: Settings › Keyboard, or Ctrl K.
+- **Progress**: sidebar › Progress (or **P**). Every tag is a skill and every category an area. Hide the ones that
+  aren't skills (client names, say) with the eye icon. Add personal achievements at the bottom.
+- **Reviews**: sidebar › Reviews (or **R**). Last week by default; switch to Month or Year in review, and compare with the
+  previous period or a year ago. Copy as Markdown or save to Obsidian.
+- **Obsidian**: Settings › Obsidian › Notes folder, pick a folder inside your vault (e.g. `Vault/Interval`). Interval writes
+  `Days/2026-11-25.md`, `Weeks/2026-W48.md`, `Months/2026-11.md`, `Years/2026.md`, each with hours in the frontmatter
+  (`total_hours`, `hours_<category>`) for Dataview. Turn on *Write automatically* to get each finished day and each
+  finished week without clicking anything. A file that Interval didn't write is never overwritten.
+
+Keyboard reference and rebinding: Settings › Keyboard, or Ctrl K.
 
 ## Documentation
 

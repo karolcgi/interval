@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { bindings, comboOf } from "../state/shortcuts";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import { Sidebar } from "./Sidebar";
@@ -7,6 +8,8 @@ import { RightPanel } from "./RightPanel";
 import { StatsView } from "./StatsView";
 import { BudgetsView } from "./BudgetsView";
 import { DayLogView } from "./DayLogView";
+import { ProgressView } from "./ProgressView";
+import { ReviewsView } from "./ReviewsView";
 import { CategoriesView } from "./CategoriesView";
 import { SettingsView } from "./SettingsView";
 import { FloatingTimer } from "./FloatingTimer";
@@ -43,7 +46,7 @@ export function App() {
   if (!ready) return <div className="boot-screen" aria-busy="true" />;
 
   return (
-    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"} ${panelOpen && view === "calendar" ? "" : "no-panel"}`}>
+    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`}>
       {sidebarOpen && <Sidebar />}
       <main className="workspace">
         {demo && (
@@ -55,11 +58,13 @@ export function App() {
         {view === "stats" && <StatsView />}
         {view === "budgets" && <BudgetsView />}
         {view === "log" && <DayLogView />}
+        {view === "progress" && <ProgressView />}
+        {view === "reviews" && <ReviewsView />}
         {view === "categories" && <CategoriesView />}
         {view === "settings" && <SettingsView />}
         <FloatingTimer />
       </main>
-      {panelOpen && view === "calendar" && <RightPanel />}
+      {view === "calendar" ? <RightPanel overview={panelOpen} /> : <div />}
       <SleepGapBanner />
       <CommandPalette />
       <Toasts />
@@ -95,25 +100,19 @@ function useShortcuts() {
       if (mod && k === "c" && sel?.kind === "block") return e.preventDefault(), A.copyBlocks([sel.id]);
       if (mod && k === "v") return e.preventDefault(), void A.pasteBlocks();
       if (mod && k === "e") return e.preventDefault(), void A.toggleTimer();
-      if (mod || e.altKey) return;
+      if ((mod || e.altKey) && !bindings(s.settings.shortcuts).has(comboOf(e))) return;
       if ((k === "delete" || k === "backspace") && sel) {
         e.preventDefault();
         return void (sel.kind === "block" ? A.deleteBlocks([sel.id]) : A.deleteSession(sel.id));
       }
       if (k === "escape") return A.select(null);
-      if (k === "f2" && sel) return e.preventDefault(), A.startRename(sel);
-      if (k === "t") return A.goToday();
-      if (k === "arrowleft" || k === "j") return A.stepDate(-1);
-      if (k === "arrowright" || k === "k") return A.stepDate(1);
-      if (k === "d") return A.setCalendarMode("day");
-      if (k === "w") return A.setCalendarMode("week");
-      if (k === "m") return A.setCalendarMode("month");
-      if (k === "s") return void A.toggleTimer();
-      if (k === "f") return store.set({ focusMode: !s.focusMode });
-      if (k === "[") return void A.updateSettings({ sidebarOpen: !s.settings.sidebarOpen });
-      if (k === "]") return void A.updateSettings({ rightPanelOpen: !s.settings.rightPanelOpen });
-      if (k === "x" && sel?.kind === "block") return void A.splitBlock(sel.id);
-      if (k === "c" && sel?.kind === "block") return void A.completeBlockManually(sel.id);
+      if (k === "arrowleft") return A.stepDate(-1);
+      if (k === "arrowright") return A.stepDate(1);
+      const action = bindings(s.settings.shortcuts).get(comboOf(e));
+      if (action) {
+        e.preventDefault();
+        return runAction(action);
+      }
       // Category shortcuts recategorise the selected item
       if (sel) {
         const cat = s.categories.find((c) => !c.archivedAt && c.shortcut && c.shortcut.toLowerCase() === k);
@@ -126,6 +125,45 @@ function useShortcuts() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+function runAction(id: string) {
+  const s = store.get();
+  const sel = s.selection;
+  switch (id) {
+    case "today":
+      return A.goToday();
+    case "prev":
+      return A.stepDate(-1);
+    case "next":
+      return A.stepDate(1);
+    case "dayView":
+      return A.setCalendarMode("day");
+    case "weekView":
+      return A.setCalendarMode("week");
+    case "monthView":
+      return A.setCalendarMode("month");
+    case "timer":
+      return void A.toggleTimer();
+    case "focusMode":
+      return store.set({ focusMode: !s.focusMode });
+    case "sidebar":
+      return void A.updateSettings({ sidebarOpen: !s.settings.sidebarOpen });
+    case "panel":
+      return void A.updateSettings({ rightPanelOpen: !s.settings.rightPanelOpen });
+    case "split":
+      return sel?.kind === "block" ? void A.splitBlock(sel.id) : undefined;
+    case "confirm":
+      return sel?.kind === "block" ? void A.completeBlockManually(sel.id) : undefined;
+    case "rename":
+      return sel ? A.startRename(sel) : undefined;
+    case "dayLog":
+      return A.setView("log");
+    case "progress":
+      return A.setView("progress");
+    case "reviews":
+      return A.setView("reviews");
+  }
 }
 
 /** Keep a heartbeat while a timer runs so sleep/suspension can be detected. */

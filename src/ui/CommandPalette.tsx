@@ -57,6 +57,8 @@ function Palette() {
       { id: "review-day", label: "Review the day", run: () => import("./DailyRitual").then((m) => m.openRitual("review")) },
       { id: "budgets", label: "Open time budgets", run: () => A.setView("budgets") },
       { id: "log", label: "Open day log", run: () => A.setView("log") },
+      { id: "progress", label: "Open progress", run: () => A.setView("progress") },
+      { id: "reviews", label: "Open weekly / monthly reviews", run: () => A.setView("reviews") },
       { id: "undo", label: "Undo", hint: "Ctrl Z", run: A.undo },
       { id: "redo", label: "Redo", hint: "Ctrl Y", run: A.redo },
       { id: "theme", label: "Toggle light / dark theme", run: () => A.updateSettings({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" }) },

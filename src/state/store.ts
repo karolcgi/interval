@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 import type { DbDriver } from "../db/driver";
-import type { Block, Budget, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
+import type { Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
-export type View = "calendar" | "stats" | "budgets" | "log" | "categories" | "settings";
+export type View = "calendar" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 
@@ -42,6 +42,7 @@ export interface AppState {
   rules: RecurrenceRule[];
   templates: DayTemplate[];
   budgets: Budget[];
+  achievements: PersonalAchievement[];
   settings: Settings;
   view: View;
   calendarMode: CalendarMode;
@@ -78,6 +79,7 @@ const initial: AppState = {
   rules: [],
   templates: [],
   budgets: [],
+  achievements: [],
   settings: DEFAULT_SETTINGS,
   view: "calendar",
   calendarMode: "day",

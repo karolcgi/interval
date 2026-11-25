@@ -226,6 +226,7 @@ function Review({ day }: { day: number }) {
 
   const finish = async () => {
     await A.saveDailyNote({ reviewedAt: Date.now() }, dayKey(day));
+    void import("../state/obsidian").then((o) => o.autoExport()).catch((e) => console.warn(e));
     store.set({ ritual: null });
     A.toast("Day reviewed");
   };
