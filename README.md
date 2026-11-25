@@ -57,8 +57,11 @@ npm run release -- 0.2.0
 
 This bumps the version, commits, tags `v0.2.0` and pushes. GitHub Actions (`.github/workflows/release.yml`) runs the
 tests, builds the Windows installer, signs the update and publishes a release with `latest.json`. Installed copies
-offer the update within a few hours (or immediately via Check now). No local Windows build is needed; a coding agent
-with push access can do this too.
+offer the update within a few hours (or immediately via Check now). No local Windows build is needed.
+
+Without tag-push rights (e.g. a coding agent): bump `version` in `package.json`, push to `main`, then run the
+**Release** workflow manually (Actions › Release › Run workflow, or `gh workflow run release.yml`). It tags
+`v<version>` itself.
 
 **Update signing key.** Updates are signed with a private key stored as the repository secrets
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is in
