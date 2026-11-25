@@ -160,6 +160,12 @@ export function SettingsView() {
         <Row label="Show actual lane" hint="Recorded sessions beside the plan">
           <input type="checkbox" checked={s.showActualLane} onChange={(e) => set({ showActualLane: e.target.checked })} />
         </Row>
+        <Row label="Template suggestions" hint="Show the weekly template as dimmed suggestions in Today and Calendar">
+          <input type="checkbox" checked={s.templateOverlay} onChange={(e) => set({ templateOverlay: e.target.checked })} aria-label="Template suggestions" />
+        </Row>
+        <Row label="Suggestions on past days" hint="Off by default. Turn on to compare past days with your template.">
+          <input type="checkbox" checked={s.templateOnPast} onChange={(e) => set({ templateOnPast: e.target.checked })} aria-label="Suggestions on past days" />
+        </Row>
       </div>
 
       </>

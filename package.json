@@ -1,7 +1,7 @@
 {
   "name": "interval",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Interval — a local-first personal time blocking and time tracking app",
   "scripts": {
@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/acceptance.mjs && node e2e/phase2.mjs && node e2e/phase3.mjs && node e2e/focus.mjs",
-    "e2e:focus": "node e2e/focus.mjs",
+    "e2e": "node e2e/acceptance.mjs && node e2e/phase2.mjs && node e2e/phase3.mjs && node e2e/focus.mjs && node e2e/presets.mjs",
+    "e2e:focus": "node e2e/focus.mjs && node e2e/presets.mjs",
     "e2e:desktop": "tauri build --no-bundle && node e2e/desktop.mjs",
     "e2e:phase2": "node e2e/phase2.mjs",
     "e2e:phase3": "node e2e/phase3.mjs",

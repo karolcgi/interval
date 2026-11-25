@@ -283,6 +283,23 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - **Parked** (designs kept in `/mnt/project-files/diary-parked/`): journal Markdown + template, Obsidian daily-note
   managed section (HTML-comment markers, interval_* properties, conflict detection, backups), Quick Capture window.
 
+## v0.7 notes (presets and weekly template)
+
+- **Storage** (migration v7): `activity_presets` (tags as JSON), `week_template_blocks` (weekday 0 = Monday,
+  `start_minute`, `duration_minutes`, category, title, notes, tags, `preset_id`), `template_dismissals (day, template_block_id)`,
+  and `blocks.preset_id` / `blocks.template_block_id`. No foreign keys: copies are independent and nothing cascades.
+- **Three layers**: suggestions are computed at render time (`domain/weekTemplate.ts › suggestionsForDay`) and never
+  written, so statistics, budgets and progress (which read only `blocks` and `sessions`) can't count them. A confirmed
+  suggestion is a normal planned block whose `template_block_id` hides that suggestion on its date, wherever the block moves.
+  Past days get no suggestions unless `templateOnPast`.
+- **Template editor** reuses `Timeline` with `mode="template"`: template blocks are drawn as Blocks on a fixed reference
+  week (Mon 1 – Sun 7 Jan 2024) and converted back with `fromRefInterval`. Edits are `commit` changes of type `tblock`,
+  so undo/redo is shared with the calendar. Selection is separate (`tplSelection`).
+- **Preset drag** is pointer-driven (`ui/presetDrag.ts`): the desktop webview keeps native drag-and-drop for files.
+  Timelines and preset lists register drop targets; the timeline renders the preview with the normal snap.
+- **Navigation**: `TopBar` (Today = calendar in day mode, Calendar = week/month). Sidebar sections collapse via
+  `settings.sidebarCollapsed`.
+
 ## Roadmap notes
 
 Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.

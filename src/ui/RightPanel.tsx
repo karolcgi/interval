@@ -5,6 +5,7 @@ import { EmojiPicker, leadingEmoji, startsWithEmoji, withLeadingEmoji } from "./
 import { Ban, Check, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
+import * as L from "../state/library";
 import * as repo from "../db/repo";
 import type { Block, Session } from "../domain/types";
 import { computeStats } from "../domain/stats";
@@ -94,6 +95,7 @@ function DayOverview() {
         <div className="progress">
           <span style={{ width: `${pct}%` }} />
         </div>
+        <ThreeLayers date={date} recordedMs={st.recordedMs} plannedMs={st.plannedMs} />
       </div>
 
       <section className="panel-sec">
@@ -138,7 +140,7 @@ function DayOverview() {
             <div className="muted small">
               {fmtTime(upNext.startAt)} · {fmtDuration(upNext.endAt - upNext.startAt)}
             </div>
-            <button className="btn btn-cat" onClick={() => void A.startTimer({ blockId: upNext.id })}>
+            <button className="btn btn-cat" onClick={() => void L.startFromBlock(upNext.id).catch(A.reportError)}>
               <Play size={12} fill="currentColor" /> Start session
             </button>
           </div>
@@ -147,6 +149,37 @@ function DayOverview() {
 
       <PanelDayLog />
     </div>
+  );
+}
+
+/** Template, Plan and Actual side by side. Suggestions are only shown, never added to the plan total. */
+function ThreeLayers({ date, recordedMs, plannedMs }: { date: number; recordedMs: number; plannedMs: number }) {
+  const blocks = useApp((s) => s.blocks);
+  const tpl = useApp((s) => s.weekTemplate);
+  const dismissed = useApp((s) => s.dismissed);
+  const onPast = useApp((s) => s.settings.templateOnPast);
+  const suggested = useMemo(() => {
+    void tpl;
+    void dismissed;
+    void onPast;
+    return L.daySuggestions(date).visible.reduce((n, g) => n + (g.endAt - g.startAt), 0);
+  }, [date, blocks, tpl, dismissed, onPast]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!tpl.length) return null;
+  return (
+    <dl className="three-layers" aria-label="Template, plan and actual">
+      <div>
+        <dt>Suggested</dt>
+        <dd className="tpl-val">{fmtDuration(suggested, { compact: true })}</dd>
+      </div>
+      <div>
+        <dt>Planned</dt>
+        <dd>{fmtDuration(plannedMs, { compact: true })}</dd>
+      </div>
+      <div>
+        <dt>Actual</dt>
+        <dd>{fmtDuration(recordedMs, { compact: true })}</dd>
+      </div>
+    </dl>
   );
 }
 
@@ -338,7 +371,7 @@ function BlockInspector({ block }: { block: Block }) {
           </button>
         ) : (
           <div className="split-start" style={catVars(cat?.color ?? "#888")}>
-            <button className="btn btn-cat wide" onClick={() => void A.startTimer({ blockId: block.id })}>
+            <button className="btn btn-cat wide" onClick={() => void L.startFromBlock(block.id).catch(A.reportError)}>
               <Play size={12} fill="currentColor" /> Start session
             </button>
             <StartMenuButton target={{ blockId: block.id }} className="btn-cat" />

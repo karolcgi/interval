@@ -9,10 +9,15 @@
 //   double-click an item / F2   -> rename it inline
 //   right-click an item         -> context menu
 //   Ctrl + wheel                -> zoom
+//   drop a preset from the library -> a block of the preset's length at the snapped time
+//
+// mode "template" draws the weekly template on a reference week (see domain/weekTemplate.ts): the same
+// gestures edit template blocks instead of planned blocks, and there is no Actual lane.
+// In calendar mode the template's suggestions are drawn as ghosts in the Plan lane.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { startsWithEmoji } from "./EmojiPicker";
-import { Check, Play, Repeat } from "lucide-react";
+import { Check, LayoutTemplate, Play, Repeat, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import type { Block, Id, Interval, Session } from "../domain/types";
@@ -22,12 +27,15 @@ import { fmt, fmtDuration, fmtHourLabel, fmtTime } from "../domain/format";
 import { computeStats } from "../domain/stats";
 import { catVars } from "./bits";
 import { CategoryPicker } from "./CategoryPicker";
-import { ItemContextMenu } from "./ContextMenus";
+import { GhostContextMenu, ItemContextMenu, TemplateBlockMenu } from "./ContextMenus";
+import * as L from "../state/library";
+import { REF_WEEK, suggestionsForDay, toRefBlock, WEEKDAY_NAMES, weekdayOf, type Suggestion } from "../domain/weekTemplate";
+import { registerDropTarget } from "./presetDrag";
 
 type Lane = "plan" | "actual";
 
 type Drag =
-  | { kind: "create"; lane: Lane; day: number; anchor: number; cur: number; x0: number; y0: number; moved: boolean }
+  | { kind: "create"; lane: Lane; day: number; anchor: number; cur: number; x0: number; y0: number; moved: boolean; fromGhost?: boolean }
   | { kind: "move"; lane: Lane; id: Id; orig: Interval; grab: number; day: number; startMin: number; copy: boolean; x0: number; y0: number; moved: boolean }
   | { kind: "resize"; lane: Lane; id: Id; orig: Interval; edge: Edge; cur: number; moved: boolean };
 
@@ -38,20 +46,34 @@ interface PickerState {
   interval: Interval;
 }
 
-export function Timeline({ days }: { days: number[] }) {
+const NO_SESSIONS: Session[] = [];
+
+export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "calendar" | "template" }) {
+  const tpl = mode === "template";
   const settings = useApp((s) => s.settings);
-  const blocks = useApp((s) => s.blocks);
-  const sessions = useApp((s) => s.sessions);
+  const storeBlocks = useApp((s) => s.blocks);
+  const weekTemplate = useApp((s) => s.weekTemplate);
+  const blocks = useMemo(() => (tpl ? weekTemplate.map(toRefBlock) : storeBlocks), [tpl, weekTemplate, storeBlocks]);
+  const storeSessions = useApp((s) => s.sessions);
+  const sessions = tpl ? NO_SESSIONS : storeSessions;
   const categories = useApp((s) => s.categories);
   const tags = useApp((s) => s.tags);
-  const selection = useApp((s) => s.selection);
-  const renaming = useApp((s) => s.renaming);
+  const storeSelection = useApp((s) => s.selection);
+  const tplSelection = useApp((s) => s.tplSelection);
+  const selection = useMemo(() => (tpl ? (tplSelection ? { kind: "block" as const, id: tplSelection } : null) : storeSelection), [tpl, tplSelection, storeSelection]);
+  const storeRenaming = useApp((s) => s.renaming);
+  const tplRenaming = useApp((s) => s.tplRenaming);
+  const renaming = tpl ? (tplRenaming ? { kind: "block" as const, id: tplRenaming } : null) : storeRenaming;
   const focusedDate = useApp((s) => s.date);
+  const dismissed = useApp((s) => s.dismissed);
+  const presetDrag = useApp((s) => s.presetDrag);
+  const presets = useApp((s) => s.presets);
   const now = useNow(15_000);
 
   const { hourHeight, dayStartHour, dayEndHour, snapMinutes } = settings;
   const multi = days.length > 1;
-  const showActual = settings.showActualLane;
+  const showActual = settings.showActualLane && !tpl;
+  const overlay = !tpl && settings.templateOverlay;
   const height = (dayEndHour - dayStartHour) * hourHeight;
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -60,6 +82,19 @@ export function Timeline({ days }: { days: number[] }) {
   const dragRef = useRef<Drag | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; kind: "block" | "session"; id: Id; at: number } | null>(null);
+  const [ghostMenu, setGhostMenu] = useState<{ x: number; y: number; id: Id; day: number } | null>(null);
+  const [tplMenu, setTplMenu] = useState<{ x: number; y: number; id: Id } | null>(null);
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const nowDay = startOfDay(now);
+  const ghostsByDay = useMemo(() => {
+    const m = new Map<number, Suggestion[]>();
+    if (!overlay) return m;
+    for (const d of days) m.set(d, suggestionsForDay(d, weekTemplate, storeBlocks, dismissed, { now: nowDay, includePast: settings.templateOnPast }).visible);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlay, days.join(","), weekTemplate, storeBlocks, dismissed, nowDay, settings.templateOnPast]);
+  const select = (id: Id | null, kind: "block" | "session" = "block") => (tpl ? store.set({ tplSelection: id }) : A.select(id ? { kind, id } : null));
 
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
@@ -95,6 +130,56 @@ export function Timeline({ days }: { days: number[] }) {
     return best;
   };
 
+  // ------------------------------------------------------- preset drops
+
+  /** Where a preset dropped at this point would start, or null when it isn't over a day column. */
+  const dropAt = (x: number, y: number): { day: number; start: number } | null => {
+    const sc = scroller.current;
+    if (!sc) return null;
+    const r = sc.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+    const hit = columnAt(x);
+    if (!hit) return null;
+    const cr = hit[1].getBoundingClientRect();
+    if (x < cr.left - 1 || x > cr.right + 1) return null;
+    return { day: hit[0], start: atMinute(hit[0], minuteAt(y, hit[1])) };
+  };
+  const dropRef = useRef(dropAt);
+  dropRef.current = dropAt;
+  useEffect(
+    () =>
+      registerDropTarget({
+        hit: (x, y) => dropRef.current(x, y) !== null,
+        drop: (x, y, presetId) => {
+          const d = dropRef.current(x, y);
+          if (!d) return;
+          (tpl ? L.dropPresetOnTemplate(presetId, d.start) : L.dropPresetOnDay(presetId, d.start)).catch(A.reportError);
+        },
+      }),
+    [tpl],
+  );
+  const dropPreview = useMemo(() => {
+    if (!presetDrag) return null;
+    const p = presets.find((x) => x.id === presetDrag.presetId);
+    const d = dropAt(presetDrag.x, presetDrag.y);
+    if (!p || !d) return null;
+    const end = d.start + p.durationMinutes * 60_000;
+    return { day: d.day, iv: { start: d.start, end: tpl ? Math.min(end, addDays(d.day, 1)) : end }, label: p.name, color: categories.find((c) => c.id === p.categoryId)?.color ?? "#888" };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetDrag, presets, categories, tpl, hourHeight]);
+  // Scroll while a preset is held near the top or bottom edge
+  useEffect(() => {
+    if (!presetDrag || !scroller.current) return;
+    const sc = scroller.current;
+    const r = sc.getBoundingClientRect();
+    if (presetDrag.x < r.left || presetDrag.x > r.right) return;
+    const t = setInterval(() => {
+      if (presetDrag.y < r.top + 36 && presetDrag.y > r.top - 20) sc.scrollTop -= 12;
+      else if (presetDrag.y > r.bottom - 36 && presetDrag.y < r.bottom + 20) sc.scrollTop += 12;
+    }, 30);
+    return () => clearInterval(t);
+  }, [presetDrag]);
+
   // ------------------------------------------------------- auto-scroll
 
   const daysKey = days.map(dayKey).join(",");
@@ -105,7 +190,7 @@ export function Timeline({ days }: { days: number[] }) {
     let targetMin: number;
     if (includesToday) targetMin = minuteOfDay(Date.now()) - 120;
     else {
-      const first = store.get().blocks.filter((b) => days.some((d) => isSameDay(d, b.startAt))).sort((a, b) => minuteOfDay(a.startAt) - minuteOfDay(b.startAt))[0];
+      const first = blocksRef.current.filter((b) => days.some((d) => isSameDay(d, b.startAt))).sort((a, b) => minuteOfDay(a.startAt) - minuteOfDay(b.startAt))[0];
       targetMin = first ? minuteOfDay(first.startAt) - 60 : 8 * 60;
     }
     el.scrollTop = Math.max(0, minuteToPx(targetMin, hourHeight, dayStartHour));
@@ -137,6 +222,9 @@ export function Timeline({ days }: { days: number[] }) {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-action]")) return; // hover buttons inside items
+    // Dragging across a template suggestion still plans a block; a plain click on one does nothing
+    // (double-click confirms it).
+    const fromGhost = !!target.closest("[data-ghost]");
     const colEl = target.closest<HTMLDivElement>("[data-day]");
     if (!colEl) return;
     const day = Number(colEl.dataset.day);
@@ -160,7 +248,7 @@ export function Timeline({ days }: { days: number[] }) {
       e.preventDefault();
       const m = minuteAt(e.clientY, colEl, snapMinutes);
       const anchor = Math.floor(minuteAt(e.clientY, colEl, 1, true) / snapMinutes) * snapMinutes;
-      updateDrag({ kind: "create", lane, day, anchor, cur: m, x0: e.clientX, y0: e.clientY, moved: false });
+      updateDrag({ kind: "create", lane, day, anchor, cur: m, x0: e.clientX, y0: e.clientY, moved: false, fromGhost });
     }
   };
 
@@ -207,8 +295,9 @@ export function Timeline({ days }: { days: number[] }) {
         if (!d.moved) {
           // A plain click on an empty Plan slot creates a default-length block there, unless it is
           // just clearing a selection. In the Actual lane a click only clears the selection.
-          const hadSelection = store.get().selection !== null;
-          A.select(null);
+          if (d.fromGhost) return;
+          const hadSelection = (tpl ? store.get().tplSelection : store.get().selection) !== null;
+          select(null);
           if (d.lane !== "plan" || hadSelection) return;
           const iv = dragToInterval(d.day, d.anchor, Math.min(1440, d.anchor + settings.defaultBlockMinutes), snapMinutes);
           setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
@@ -218,15 +307,19 @@ export function Timeline({ days }: { days: number[] }) {
         setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
       } else if (d.kind === "move") {
         if (!d.moved) {
-          A.select({ kind: d.lane === "plan" ? "block" : "session", id: d.id });
+          select(d.id, d.lane === "plan" ? "block" : "session");
           return;
         }
         const iv = moveInterval(d.orig, d.day, d.startMin);
         if (iv.start === d.orig.start && !d.copy) return;
-        if (d.lane === "plan") {
+        if (d.lane === "plan" && tpl) {
+          const b = blocksRef.current.find((x) => x.id === d.id);
+          if (d.copy && b) void L.createTemplateBlock(iv, b.categoryId, { title: b.title, notes: b.notes, tagIds: b.tagIds, presetId: b.presetId ?? null }).catch(A.reportError);
+          else if (!d.copy) void L.setTemplateInterval(d.id, iv, "Move template block").catch(A.reportError);
+        } else if (d.lane === "plan") {
           if (d.copy) {
             const b = store.get().blocks.find((x) => x.id === d.id);
-            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds }).catch(A.reportError);
+            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null }).catch(A.reportError);
           } else void A.updateBlock(d.id, { startAt: iv.start, endAt: iv.end }, "Move block").catch(A.reportError);
         } else {
           const s = store.get().sessions.find((x) => x.id === d.id);
@@ -240,7 +333,8 @@ export function Timeline({ days }: { days: number[] }) {
       } else if (d.kind === "resize") {
         const iv = resizeInterval(d.orig, d.edge, d.cur, snapMinutes);
         if (iv.start === d.orig.start && iv.end === d.orig.end) return;
-        if (d.lane === "plan") void A.updateBlock(d.id, { startAt: iv.start, endAt: iv.end }, "Resize block").catch(A.reportError);
+        if (d.lane === "plan" && tpl) void L.setTemplateInterval(d.id, iv, "Resize template block").catch(A.reportError);
+        else if (d.lane === "plan") void A.updateBlock(d.id, { startAt: iv.start, endAt: iv.end }, "Resize block").catch(A.reportError);
         else {
           const s = store.get().sessions.find((x) => x.id === d.id);
           if (s?.endAt === null && d.edge === "end") return;
@@ -258,7 +352,7 @@ export function Timeline({ days }: { days: number[] }) {
       window.removeEventListener("keydown", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag !== null, minuteAt, multi, snapMinutes, settings.defaultBlockMinutes]);
+  }, [drag !== null, minuteAt, multi, snapMinutes, settings.defaultBlockMinutes, tpl]);
 
   function itemInterval(lane: Lane, id: Id): Interval | null {
     if (lane === "plan") {
@@ -272,10 +366,16 @@ export function Timeline({ days }: { days: number[] }) {
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest("[data-action]")) return;
+    const ghostEl = target.closest<HTMLElement>("[data-ghost]");
+    if (ghostEl) {
+      void L.confirmSuggestion(ghostEl.dataset.ghost!, Number(ghostEl.dataset.ghostDay)).catch(A.reportError);
+      return;
+    }
     const itemEl = target.closest<HTMLElement>("[data-item]");
     if (itemEl) {
       const id = itemEl.dataset.item!;
       if (id === "__copy__") return;
+      if (tpl) return store.set({ tplSelection: id, tplRenaming: id });
       const lane = itemEl.closest<HTMLElement>("[data-lane]")?.dataset.lane as Lane;
       A.startRename({ kind: lane === "plan" ? "block" : "session", id });
       return;
@@ -291,9 +391,20 @@ export function Timeline({ days }: { days: number[] }) {
 
   const onContextMenu = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
+    const ghostEl = target.closest<HTMLElement>("[data-ghost]");
+    if (ghostEl) {
+      e.preventDefault();
+      setGhostMenu({ x: e.clientX, y: e.clientY, id: ghostEl.dataset.ghost!, day: Number(ghostEl.dataset.ghostDay) });
+      return;
+    }
     const itemEl = target.closest<HTMLElement>("[data-item]");
     if (!itemEl) return;
     e.preventDefault();
+    if (tpl) {
+      store.set({ tplSelection: itemEl.dataset.item! });
+      setTplMenu({ x: e.clientX, y: e.clientY, id: itemEl.dataset.item! });
+      return;
+    }
     const lane = itemEl.closest<HTMLElement>("[data-lane]")?.dataset.lane as Lane;
     const colEl = target.closest<HTMLDivElement>("[data-day]");
     const id = itemEl.dataset.item!;
@@ -315,13 +426,11 @@ export function Timeline({ days }: { days: number[] }) {
   const gridStyle = { ["--hh" as string]: `${hourHeight}px`, height } as CSSProperties;
 
   return (
-    <div className={`timeline ${multi ? "multi" : "single"} ${drag ? "dragging" : ""} ${showActual ? "" : "no-actual"}`}>
+    <div className={`timeline ${multi ? "multi" : "single"} ${drag ? "dragging" : ""} ${showActual ? "" : "no-actual"} ${tpl ? "template-mode" : ""} ${presetDrag ? "preset-dragging" : ""}`}>
       {multi ? (
         <div className="tl-heads">
           <div className="tl-gutter-head" />
-          {days.map((d) => (
-            <DayHead key={d} day={d} focused={isSameDay(d, focusedDate)} />
-          ))}
+          {days.map((d) => (tpl ? <TemplateDayHead key={d} day={d} blocks={blocks} /> : <DayHead key={d} day={d} focused={isSameDay(d, focusedDate)} />))}
         </div>
       ) : (
         showActual && (
@@ -359,6 +468,10 @@ export function Timeline({ days }: { days: number[] }) {
                 preview={preview}
                 drag={drag}
                 pending={picker && picker.interval.start < addDays(day, 1) && picker.interval.end > day ? picker : null}
+                ghosts={ghostsByDay.get(day) ?? NO_GHOSTS}
+                drop={dropPreview && dropPreview.day === day ? dropPreview : null}
+                showActual={showActual}
+                tpl={tpl}
                 now={now}
                 compact={multi}
                 selection={selection}
@@ -374,22 +487,33 @@ export function Timeline({ days }: { days: number[] }) {
         <CategoryPicker
           x={picker.x}
           y={picker.y}
-          title={picker.lane === "plan" ? `Plan ${fmtTime(picker.interval.start)} – ${fmtTime(picker.interval.end)}` : `Log ${fmtTime(picker.interval.start)} – ${fmtTime(picker.interval.end)}`}
+          title={
+            tpl
+              ? `Template · ${WEEKDAY_NAMES[weekdayOf(picker.interval.start)]} ${fmtTime(picker.interval.start)} – ${fmtTime(picker.interval.end)}`
+              : picker.lane === "plan"
+                ? `Plan ${fmtTime(picker.interval.start)} – ${fmtTime(picker.interval.end)}`
+                : `Log ${fmtTime(picker.interval.start)} – ${fmtTime(picker.interval.end)}`
+          }
           onCancel={() => setPicker(null)}
           onPick={(categoryId, title) => {
             const p = picker;
             setPicker(null);
             const extra = title ? { title } : {};
-            if (p.lane === "plan") void A.createBlock(p.interval, categoryId, extra).catch(A.reportError);
+            if (tpl) void L.createTemplateBlock(p.interval, categoryId, extra).catch(A.reportError);
+            else if (p.lane === "plan") void A.createBlock(p.interval, categoryId, extra).catch(A.reportError);
             else if (p.interval.start > Date.now()) A.toast("Actual time can’t start in the future. Plan it instead.");
             else void A.createSession(p.interval, categoryId, extra).catch(A.reportError);
           }}
         />
       )}
       {menu && <ItemContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {ghostMenu && <GhostContextMenu {...ghostMenu} onClose={() => setGhostMenu(null)} />}
+      {tplMenu && <TemplateBlockMenu {...tplMenu} onClose={() => setTplMenu(null)} />}
     </div>
   );
 }
+
+const NO_GHOSTS: Suggestion[] = [];
 
 function endMinute(iv: Interval, day: number): number {
   return iv.end >= addDays(day, 1) ? 1440 : minuteOfDay(iv.end);
@@ -405,6 +529,10 @@ interface ColumnProps {
   preview: { id: Id; lane: Lane; iv: Interval; copy: boolean } | null;
   drag: Drag | null;
   pending: PickerState | null;
+  ghosts: Suggestion[];
+  drop: { iv: Interval; label: string; color: string } | null;
+  showActual: boolean;
+  tpl: boolean;
   now: number;
   compact: boolean;
   selection: { kind: "block" | "session"; id: Id } | null;
@@ -458,7 +586,10 @@ function DayColumn(p: ColumnProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.sessions, p.preview, p.day, p.now]);
 
-  const planLayout = useMemo(() => layoutColumns(planItems.map((b) => ({ id: b.id, startAt: b.startAt, endAt: b.endAt }))), [planItems]);
+  const planLayout = useMemo(
+    () => layoutColumns([...planItems.map((b) => ({ id: b.id, startAt: b.startAt, endAt: b.endAt })), ...p.ghosts.map((g) => ({ id: `ghost:${g.tb.id}`, startAt: g.startAt, endAt: g.endAt }))]),
+    [planItems, p.ghosts],
+  );
   const actualLayout = useMemo(() => layoutColumns(actualItems.map((s) => ({ id: s.id, startAt: s.startAt, endAt: s.end }))), [actualItems]);
 
   const createGhost = p.drag?.kind === "create" && p.drag.day === p.day && p.drag.moved ? p.drag : p.pending;
@@ -485,12 +616,17 @@ function DayColumn(p: ColumnProps) {
               catById={p.catById}
               tagById={p.tagById}
               now={p.now}
+              tpl={p.tpl}
             />
           );
         })}
+        {p.ghosts.map((g) => (
+          <GhostView key={g.tb.id} g={g} pos={place({ start: g.startAt, end: g.endAt })} lay={planLayout.get(`ghost:${g.tb.id}`) ?? { col: 0, cols: 1 }} catById={p.catById} tagById={p.tagById} compact={p.compact} />
+        ))}
         {ghostIv && createGhost?.lane === "plan" && <CreateGhost pos={place(ghostIv)} iv={ghostIv} />}
+        {p.drop && <CreateGhost pos={place(p.drop.iv)} iv={p.drop.iv} drop={p.drop} />}
       </div>
-      {settings.showActualLane && (
+      {p.showActual && (
         <div className="lane lane-actual" data-lane="actual">
           {actualItems.map((s) => {
             const pos = place({ start: s.startAt, end: s.end });
@@ -522,12 +658,51 @@ function DayColumn(p: ColumnProps) {
   );
 }
 
-function CreateGhost({ pos, iv, actual }: { pos: { top: number; height: number }; iv: Interval; actual?: boolean }) {
+function CreateGhost({ pos, iv, actual, drop }: { pos: { top: number; height: number }; iv: Interval; actual?: boolean; drop?: { label: string; color: string } }) {
   return (
-    <div className={`create-ghost ${actual ? "actual" : ""}`} style={{ top: pos.top, height: pos.height }}>
+    <div className={`create-ghost ${actual ? "actual" : ""} ${drop ? "drop" : ""}`} style={{ top: pos.top, height: pos.height, ...(drop ? catVars(drop.color) : {}) }} aria-label={drop ? "Drop preview" : undefined}>
+      {drop && <strong className="drop-name">{drop.label}</strong>}
       <span>
         {fmtTime(iv.start)} – {fmtTime(iv.end)} · {fmtDuration(iv.end - iv.start, { compact: true })}
       </span>
+    </div>
+  );
+}
+
+/** A weekly-template suggestion: dimmed, dashed, never in the Actual lane. Double-click to plan it. */
+function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clippedTop: boolean; clippedBottom: boolean }; lay: { col: number; cols: number }; catById: ColumnProps["catById"]; tagById: ColumnProps["tagById"]; compact: boolean }) {
+  const { tb, day } = p.g;
+  const cat = p.catById.get(tb.categoryId);
+  const label = tb.title || cat?.name || "Untitled";
+  const timeLabel = `${fmtTime(p.g.startAt)} – ${fmtTime(p.g.endAt)}`;
+  const tiny = p.pos.height < 30;
+  const tagNames = tb.tagIds.map((t) => p.tagById.get(t)?.name).filter(Boolean) as string[];
+  const run = (fn: () => Promise<unknown>) => (e: React.MouseEvent) => (e.stopPropagation(), void fn().catch(A.reportError));
+  return (
+    <div
+      className={`block ghost-suggestion ${tiny ? "tiny" : ""}`}
+      style={itemStyle(p.pos, p.lay, cat?.color ?? "#888")}
+      data-ghost={tb.id}
+      data-ghost-day={day}
+      title={`Template suggestion: ${label}\n${timeLabel}${tagNames.length ? "\n#" + tagNames.join(" #") : ""}\nDouble-click to add it to the plan`}
+      aria-label={`Template suggestion ${label}, ${timeLabel}`}
+    >
+      <div className="block-body">
+        <div className="block-title">
+          <LayoutTemplate size={10} className="ghost-icon" aria-hidden />
+          <span>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>
+          {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
+        </div>
+        {!tiny && <div className="block-meta">{timeLabel}{!p.compact ? " · Template" : ""}</div>}
+      </div>
+      <div className="block-actions">
+        <button data-action className="mini-act" title="Add to plan" aria-label="Add to plan" onClick={run(() => L.confirmSuggestion(tb.id, day))}>
+          <Check size={12} />
+        </button>
+        <button data-action className="mini-act subtle" title="Dismiss for this day" aria-label="Dismiss for this day" onClick={run(() => L.dismissSuggestion(tb.id, day))}>
+          <X size={12} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -554,6 +729,7 @@ function BlockView(p: {
   catById: ColumnProps["catById"];
   tagById: ColumnProps["tagById"];
   now: number;
+  tpl?: boolean;
 }) {
   const b = p.block;
   const cat = p.catById.get(b.categoryId);
@@ -562,7 +738,7 @@ function BlockView(p: {
   const label = b.title || cat?.name || "Untitled";
   const timeLabel = `${fmtTime(b.startAt)} – ${fmtTime(b.endAt)}`;
   const tiny = p.pos.height < 30;
-  const isPast = b.endAt <= p.now;
+  const isPast = !p.tpl && b.endAt <= p.now;
   const canConfirm = b.status === "planned" && b.startAt < p.now;
   const subtitle = [b.title && cat ? cat.name : null, tagNames.join(", ") || null].filter(Boolean).join(" · ");
   return (
@@ -578,7 +754,7 @@ function BlockView(p: {
       <div className="block-body">
         <div className="block-title">
           {b.recurrenceId && <Repeat size={10} />}
-          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} /> : <span className={b.title ? "" : "unnamed"}>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>}
+          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} tpl={p.tpl} /> : <span className={b.title ? "" : "unnamed"}>{cat?.emoji && !startsWithEmoji(label) ? `${cat.emoji} ${label}` : label}</span>}
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && (
@@ -589,14 +765,14 @@ function BlockView(p: {
         )}
         {!tiny && p.compact && subtitle && p.pos.height > 54 && <div className="block-meta">{subtitle}</div>}
       </div>
-      {!p.ghost && b.status !== "completed" && b.status !== "in_progress" && b.status !== "skipped" && (
+      {!p.ghost && !p.tpl && b.status !== "completed" && b.status !== "in_progress" && b.status !== "skipped" && (
         <div className="block-actions">
           {canConfirm && (
             <button data-action className="mini-act" title="Confirm as done (C)" onClick={() => void A.completeBlockManually(b.id)}>
               <Check size={12} />
             </button>
           )}
-          <button data-action className="mini-act" title="Start session" onClick={() => void A.startTimer({ blockId: b.id })}>
+          <button data-action className="mini-act" title="Start session" onClick={() => void L.startFromBlock(b.id).catch(A.reportError)}>
             <Play size={11} />
           </button>
         </div>
@@ -649,7 +825,7 @@ function SessionView(p: {
 }
 
 /** Inline name editor on a block or session. Enter or blur saves, Escape cancels. */
-function InlineName(p: { value: string | null; placeholder: string; target: { kind: "block" | "session"; id: Id } }) {
+function InlineName(p: { value: string | null; placeholder: string; target: { kind: "block" | "session"; id: Id }; tpl?: boolean }) {
   const [v, setV] = useState(p.value ?? "");
   const ref = useRef<HTMLInputElement>(null);
   const done = useRef(false);
@@ -660,6 +836,12 @@ function InlineName(p: { value: string | null; placeholder: string; target: { ki
   const save = () => {
     if (done.current) return;
     done.current = true;
+    if (p.tpl) {
+      store.set({ tplRenaming: null });
+      const title = v.trim() || null;
+      if (title !== p.value) void L.updateTemplateBlock(p.target.id, { title }, "Rename template block").catch(A.reportError);
+      return;
+    }
     void A.renameItem(p.target, v).catch(A.reportError);
   };
   return (
@@ -681,7 +863,8 @@ function InlineName(p: { value: string | null; placeholder: string; target: { ki
         } else if (e.key === "Escape") {
           e.preventDefault();
           done.current = true;
-          A.cancelRename();
+          if (p.tpl) store.set({ tplRenaming: null });
+          else A.cancelRename();
         }
       }}
       onDoubleClick={(e) => e.stopPropagation()}
@@ -710,5 +893,16 @@ function DayHead({ day, focused }: { day: number; focused: boolean }) {
         <span className="dh-planned"> / {fmtDuration(stats.plannedMs, { compact: true })}</span>
       </span>
     </button>
+  );
+}
+
+function TemplateDayHead({ day, blocks }: { day: number; blocks: Block[] }) {
+  const w = REF_WEEK.indexOf(day);
+  const ms = blocks.filter((b) => isSameDay(b.startAt, day)).reduce((n, b) => n + (b.endAt - b.startAt), 0);
+  return (
+    <div className="tl-dayhead tpl-dayhead" aria-label={`${WEEKDAY_NAMES[w]}, ${fmtDuration(ms, { compact: true })} intended`}>
+      <span className="dh-dow">{WEEKDAY_NAMES[w]?.slice(0, 3)}</span>
+      <span className="dh-total">{ms > 0 ? fmtDuration(ms, { compact: true }) : "–"}</span>
+    </div>
   );
 }

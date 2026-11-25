@@ -2,6 +2,7 @@
 //   npm run e2e:phase2
 import { createServer } from "vite";
 import { chromium } from "playwright";
+import { nav } from "./nav.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const OUT = new URL("./artifacts/", import.meta.url);
@@ -171,7 +172,7 @@ try {
   ok("Flowtime: 62 min focus, stop suggests 10 min break, break ends, finish");
 
   // ------------------------------------------------------------------- budgets
-  await page.getByRole("button", { name: "Time budgets" }).click();
+  await nav(page, "Time budgets");
   await page.getByLabel("Budget for").selectOption({ label: "Studying" });
   await page.getByLabel("Target hours").first().fill("7");
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -184,7 +185,7 @@ try {
   ok("Weekly budgets: Studying ≥ 7h, Freelance ≤ 1h shows Over limit");
 
   // -------------------------------------------------------------- daily ritual
-  await page.locator(".nav-item", { hasText: "Today" }).click();
+  await nav(page, "Today");
   await page.locator(".ritual-prompt", { hasText: "Morning planning" }).click();
   await expectText(page.locator(".ritual"), /Plan today/, "planning opens");
   await expectText(page.locator(".ritual .ritual-total"), /planned of a 8h day/, "workday allocation");
@@ -224,7 +225,7 @@ try {
 
   // ------------------------------------------------------------------ day log
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.locator(".nav-item", { hasText: "Day log" }).click();
+  await nav(page, "Day log");
   await expectText(page.locator(".daylog-list"), /Client edit/, "day log lists recorded work");
   await page.getByRole("radio", { name: "Markdown" }).click();
   await expectText(page.locator(".daylog-md"), /# Wednesday 25 November 2026[\s\S]*\*\*Client edit\*\*/, "markdown timeline");

@@ -2,7 +2,7 @@
 // Mutation helpers return Statement[] so callers can compose atomic batches.
 
 import type { DbDriver, SqlValue, Statement } from "./driver";
-import type { Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, EntryKind, FocusRun, Id, JournalEntry, Session, SessionMode, Settings, Tag, TemplateBlock } from "../domain/types";
+import type { ActivityPreset, Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, EntryKind, FocusRun, Id, JournalEntry, Session, SessionMode, Settings, Tag, TemplateBlock, WeekTemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 
@@ -52,8 +52,9 @@ export function upsertCategoryStmt(c: Category): Statement {
 
 export async function categoryUsage(db: DbDriver, id: Id): Promise<number> {
   const r = await db.select<{ n: number }>(
-    "SELECT (SELECT COUNT(*) FROM blocks WHERE category_id = ?) + (SELECT COUNT(*) FROM sessions WHERE category_id = ?) AS n",
-    [id, id],
+    `SELECT (SELECT COUNT(*) FROM blocks WHERE category_id = ?) + (SELECT COUNT(*) FROM sessions WHERE category_id = ?)
+          + (SELECT COUNT(*) FROM activity_presets WHERE category_id = ?) + (SELECT COUNT(*) FROM week_template_blocks WHERE category_id = ?) AS n`,
+    [id, id, id, id],
   );
   return Number(r[0]?.n ?? 0);
 }
@@ -120,6 +121,8 @@ function toBlock(r: Row): Block {
     status: String(r.status) as BlockStatus,
     recurrenceId: str(r.recurrence_id),
     tagIds: splitIds(r.tag_ids),
+    presetId: str(r.preset_id),
+    templateBlockId: str(r.template_block_id),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -143,12 +146,13 @@ export async function getBlock(db: DbDriver, id: Id): Promise<Block | null> {
 export function upsertBlockStmts(b: Block): Statement[] {
   return [
     {
-      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, preset_id, template_block_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET start_at=excluded.start_at, end_at=excluded.end_at, tz=excluded.tz,
               category_id=excluded.category_id, title=excluded.title, notes=excluded.notes, link=excluded.link,
-              status=excluded.status, recurrence_id=excluded.recurrence_id, updated_at=excluded.updated_at`,
-      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.createdAt, b.updatedAt],
+              status=excluded.status, recurrence_id=excluded.recurrence_id, preset_id=excluded.preset_id,
+              template_block_id=excluded.template_block_id, updated_at=excluded.updated_at`,
+      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.presetId ?? null, b.templateBlockId ?? null, b.createdAt, b.updatedAt],
     },
     { sql: "DELETE FROM block_tags WHERE block_id = ?", params: [b.id] },
     ...b.tagIds.map((t) => ({ sql: "INSERT OR IGNORE INTO block_tags (block_id, tag_id) VALUES (?, ?)", params: [b.id, t] })),
@@ -551,4 +555,101 @@ export function upsertEntryStmt(e: JournalEntry): Statement {
 
 export function deleteEntryStmt(id: Id): Statement {
   return { sql: "DELETE FROM journal_entries WHERE id = ?", params: [id] };
+}
+
+// ---------------------------------------------------------- activity presets
+
+function toPreset(r: Row): ActivityPreset {
+  return {
+    id: String(r.id),
+    name: String(r.name),
+    categoryId: String(r.category_id),
+    durationMinutes: Number(r.duration_minutes),
+    tagIds: parseIds(r.tag_ids),
+    notes: str(r.notes),
+    focusPresetId: str(r.focus_preset_id),
+    favorite: Number(r.favorite) === 1,
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+export async function listPresets(db: DbDriver): Promise<ActivityPreset[]> {
+  return (await db.select<Row>("SELECT * FROM activity_presets ORDER BY sort_order, created_at")).map(toPreset);
+}
+
+export function upsertPresetStmt(p: ActivityPreset): Statement {
+  return {
+    sql: `INSERT INTO activity_presets (id, name, category_id, duration_minutes, tag_ids, notes, focus_preset_id, favorite, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name=excluded.name, category_id=excluded.category_id, duration_minutes=excluded.duration_minutes,
+            tag_ids=excluded.tag_ids, notes=excluded.notes, focus_preset_id=excluded.focus_preset_id, favorite=excluded.favorite,
+            sort_order=excluded.sort_order, updated_at=excluded.updated_at`,
+    params: [p.id, p.name, p.categoryId, p.durationMinutes, JSON.stringify(p.tagIds), p.notes, p.focusPresetId, p.favorite ? 1 : 0, p.sortOrder, p.createdAt, p.updatedAt],
+  };
+}
+
+export function deletePresetStmt(id: Id): Statement {
+  return { sql: "DELETE FROM activity_presets WHERE id = ?", params: [id] };
+}
+
+// ----------------------------------------------------------- weekly template
+
+function toWeekBlock(r: Row): WeekTemplateBlock {
+  return {
+    id: String(r.id),
+    weekday: Number(r.weekday),
+    startMinute: Number(r.start_minute),
+    durationMinutes: Number(r.duration_minutes),
+    categoryId: String(r.category_id),
+    title: str(r.title),
+    notes: str(r.notes),
+    tagIds: parseIds(r.tag_ids),
+    presetId: str(r.preset_id),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+export async function listWeekTemplate(db: DbDriver): Promise<WeekTemplateBlock[]> {
+  return (await db.select<Row>("SELECT * FROM week_template_blocks ORDER BY weekday, start_minute")).map(toWeekBlock);
+}
+
+export function upsertWeekBlockStmt(b: WeekTemplateBlock): Statement {
+  return {
+    sql: `INSERT INTO week_template_blocks (id, weekday, start_minute, duration_minutes, category_id, title, notes, tag_ids, preset_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET weekday=excluded.weekday, start_minute=excluded.start_minute, duration_minutes=excluded.duration_minutes,
+            category_id=excluded.category_id, title=excluded.title, notes=excluded.notes, tag_ids=excluded.tag_ids,
+            preset_id=excluded.preset_id, updated_at=excluded.updated_at`,
+    params: [b.id, b.weekday, b.startMinute, b.durationMinutes, b.categoryId, b.title, b.notes, JSON.stringify(b.tagIds), b.presetId, b.createdAt, b.updatedAt],
+  };
+}
+
+export function deleteWeekBlockStmt(id: Id): Statement {
+  return { sql: "DELETE FROM week_template_blocks WHERE id = ?", params: [id] };
+}
+
+export interface Dismissal {
+  day: string; // YYYY-MM-DD
+  templateBlockId: Id;
+  createdAt: number;
+}
+
+/** Dismissed suggestions for days in [fromDay, toDay] (YYYY-MM-DD, inclusive). */
+export async function listDismissals(db: DbDriver, fromDay?: string, toDay?: string): Promise<Dismissal[]> {
+  const rows =
+    fromDay && toDay
+      ? await db.select<Row>("SELECT * FROM template_dismissals WHERE day >= ? AND day <= ?", [fromDay, toDay])
+      : await db.select<Row>("SELECT * FROM template_dismissals");
+  return rows.map((r) => ({ day: String(r.day), templateBlockId: String(r.template_block_id), createdAt: Number(r.created_at) }));
+}
+
+export function dismissStmt(d: Dismissal): Statement {
+  return { sql: "INSERT OR IGNORE INTO template_dismissals (day, template_block_id, created_at) VALUES (?, ?, ?)", params: [d.day, d.templateBlockId, d.createdAt] };
+}
+
+export function undismissStmt(day: string, templateBlockId: Id): Statement {
+  return { sql: "DELETE FROM template_dismissals WHERE day = ? AND template_block_id = ?", params: [day, templateBlockId] };
 }

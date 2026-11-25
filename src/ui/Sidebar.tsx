@@ -1,59 +1,50 @@
+// Left sidebar (v0.7): mini calendar, activity presets, activities, focus timer, then today's
+// totals. Primary navigation lives in the top tab bar. Calendar, presets and activities collapse;
+// the timer keeps its own toggle. Collapsed sections are remembered (settings.sidebarCollapsed).
 import { useMemo } from "react";
-import { CalendarDays, CalendarRange, ChartNoAxesColumn, Gauge, NotebookText, TrendingUp, Settings2, Shapes, Sun } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useApp, useNow } from "../state/store";
+import { SideSection } from "./SideSection";
 import * as A from "../state/actions";
 import { FocusPanel } from "./FocusPanel";
 import { MiniCalendar } from "./MiniCalendar";
+import { PresetLibrary } from "./PresetLibrary";
 import { computeStats } from "../domain/stats";
-import { addDays, isSameDay, startOfDay } from "../domain/time";
+import { addDays, startOfDay } from "../domain/time";
 import { fmtDuration } from "../domain/format";
 import { CatDot } from "./bits";
+import * as L from "../state/library";
 
 export function Sidebar() {
   const view = useApp((s) => s.view);
-  const mode = useApp((s) => s.calendarMode);
-  const date = useApp((s) => s.date);
   const categories = useApp((s) => s.categories);
   const today = useApp((s) => s.today);
   const update = useApp((s) => s.update);
+  const weekTemplate = useApp((s) => s.weekTemplate);
+  const dismissed = useApp((s) => s.dismissed);
   const now = useNow(30_000);
-  const isTodayView = view === "calendar" && mode === "day" && isSameDay(date, now);
 
   const totals = useMemo(() => {
     const d = startOfDay(now);
     return computeStats({ sessions: today.sessions, blocks: today.blocks, categories, range: { start: d, end: addDays(d, 1) }, now });
   }, [today, categories, now]);
+  // Suggested by the template and not yet planned (never part of the planned total).
+  const suggestedMs = useMemo(() => {
+    void weekTemplate;
+    void dismissed;
+    return L.suggestedTodayMs(today.blocks);
+  }, [weekTemplate, dismissed, today.blocks]);
 
   const active = categories.filter((c) => !c.archivedAt && !c.parentId);
   const recordedById = new Map(totals.byCategory.map((x) => [x.categoryId, x.recordedMs]));
 
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark" aria-hidden>
-          <svg viewBox="0 0 22 22" width="22" height="22">
-            <rect width="22" height="22" rx="5" fill="var(--accent)" />
-            <path d="M6 11h10M11 6v10" stroke="var(--accent-ink)" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-        </div>
-        <span className="brand-name">Interval</span>
-      </div>
-
-      <nav className="nav">
-        <NavItem icon={<Sun size={15} />} label="Today" active={isTodayView} onClick={() => { A.setCalendarMode("day"); A.goToday(); }} hint="T" />
-        <NavItem icon={<CalendarDays size={15} />} label="Calendar" active={view === "calendar" && !isTodayView} onClick={() => A.setCalendarMode(mode === "day" ? "week" : mode)} hint="W" />
-        <NavItem icon={<ChartNoAxesColumn size={15} />} label="Statistics" active={view === "stats"} onClick={() => A.setView("stats")} />
-        <NavItem icon={<Gauge size={15} />} label="Time budgets" active={view === "budgets"} onClick={() => A.setView("budgets")} />
-        <NavItem icon={<TrendingUp size={15} />} label="Progress" active={view === "progress"} onClick={() => A.setView("progress")} />
-        <NavItem icon={<CalendarRange size={15} />} label="Reviews" active={view === "reviews"} onClick={() => A.setView("reviews")} />
-        <NavItem icon={<NotebookText size={15} />} label="Day log" active={view === "log"} onClick={() => A.setView("log")} />
-        <NavItem icon={<Shapes size={15} />} label="Categories & tags" active={view === "categories"} onClick={() => A.setView("categories")} />
-      </nav>
-
       <MiniCalendar />
 
-      <div className="side-section">
-        <div className="eyebrow">Activities</div>
+      <PresetLibrary />
+
+      <SideSection id="activities" title="Activities">
         <ul className="cat-list">
           {active.map((c) => (
             <li key={c.id} className="cat-row" title={c.shortcut ? `Shortcut: ${c.shortcut}` : undefined}>
@@ -63,7 +54,7 @@ export function Sidebar() {
             </li>
           ))}
         </ul>
-      </div>
+      </SideSection>
 
       <FocusPanel />
 
@@ -83,10 +74,11 @@ export function Sidebar() {
             <div className="update-sub">Your data is kept.</div>
           </div>
         )}
-        <div className="today-chip" onClick={A.goToday} role="button" tabIndex={0}>
+        <div className="today-chip" onClick={A.goToday} role="button" tabIndex={0} aria-label="Today's totals">
           <span className="eyebrow">Today</span>
           <span className="today-chip-val">{fmtDuration(totals.recordedMs)}</span>
           <span className="today-chip-sub">of {fmtDuration(totals.plannedMs)} planned</span>
+          {suggestedMs > 0 && <span className="today-chip-sub tpl-sub">+ {fmtDuration(suggestedMs, { compact: true })} suggested by template</span>}
         </div>
         <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => A.setView("settings")}>
           <Settings2 size={15} />
@@ -94,15 +86,5 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
-  );
-}
-
-function NavItem(props: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; hint?: string }) {
-  return (
-    <button className={`nav-item ${props.active ? "active" : ""}`} onClick={props.onClick}>
-      {props.icon}
-      <span>{props.label}</span>
-      {props.hint && <kbd className="nav-hint">{props.hint}</kbd>}
-    </button>
   );
 }

@@ -4,7 +4,7 @@
 import type { DbDriver, Statement } from "./driver";
 import * as repo from "./repo";
 import { LATEST_VERSION } from "./migrations";
-import type { Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, FocusRun, JournalEntry, Session, Tag } from "../domain/types";
+import type { ActivityPreset, Block, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, FocusRun, JournalEntry, Session, Tag, WeekTemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { parseCsv, toCsv } from "../domain/csv";
 import { isoLocal } from "../domain/format";
@@ -27,6 +27,9 @@ export interface ExportBundle {
   achievements?: PersonalAchievement[]; // since 0.3
   focusRuns?: FocusRun[]; // since 0.4
   journalEntries?: JournalEntry[]; // since 0.6
+  activityPresets?: ActivityPreset[]; // since 0.7
+  weekTemplate?: WeekTemplateBlock[]; // since 0.7
+  templateDismissals?: repo.Dismissal[]; // since 0.7
   settings: Record<string, unknown>;
 }
 
@@ -57,6 +60,9 @@ export async function exportJson(db: DbDriver): Promise<ExportBundle> {
     achievements: await repo.listAchievements(db),
     focusRuns: await repo.listAllFocusRuns(db),
     journalEntries: await repo.listAllEntries(db),
+    activityPresets: await repo.listPresets(db),
+    weekTemplate: await repo.listWeekTemplate(db),
+    templateDismissals: await repo.listDismissals(db),
     settings,
   };
 }
@@ -93,6 +99,9 @@ export async function importJson(db: DbDriver, data: unknown): Promise<{ blocks:
   for (const a of b.achievements ?? []) stmts.push(repo.upsertAchievementStmt({ ...a, targetId: a.targetType === "tag" && a.targetId ? (tagMap.get(a.targetId) ?? a.targetId) : a.targetId }));
   for (const f of b.focusRuns ?? []) stmts.push(repo.upsertFocusRunStmt(f));
   for (const e of b.journalEntries ?? []) stmts.push(repo.upsertEntryStmt(e));
+  for (const p of b.activityPresets ?? []) stmts.push(repo.upsertPresetStmt({ ...p, tagIds: mapTags(p.tagIds) }));
+  for (const w of b.weekTemplate ?? []) stmts.push(repo.upsertWeekBlockStmt({ ...w, tagIds: mapTags(w.tagIds) }));
+  for (const d of b.templateDismissals ?? []) stmts.push(repo.dismissStmt(d));
   await db.batch(stmts);
   return { blocks: b.blocks?.length ?? 0, sessions: b.sessions?.length ?? 0 };
 }

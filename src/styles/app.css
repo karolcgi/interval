@@ -334,11 +334,13 @@ textarea.field {
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr) auto;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   height: 100%;
+  --topbar-h: 40px;
 }
 .sidebar-resizer {
   position: absolute;
-  top: 0;
+  top: var(--topbar-h);
   bottom: 0;
   left: calc(var(--sidebar-w) - 3px);
   width: 6px;
@@ -846,7 +848,6 @@ textarea.field {
 /* planned: dashed outline, light fill — an intention */
 .block.status-planned {
   background: color-mix(in oklab, var(--c) var(--block-fill-planned), var(--bg));
-  border-style: dashed;
 }
 .block.status-planned::before {
   opacity: 0.7;
@@ -4071,3 +4072,646 @@ html[data-window] #root {
 .kind-menu li:hover, .kind-menu li.on { background: var(--hover); }
 .annotate.compact { flex: 1 1 100%; min-width: 0; max-width: 100%; }
 .annotate.compact .annotate-row .btn { display: none; } /* Enter saves; the sidebar is narrow */
+
+/* ============================================================ v0.7: top tabs */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding-right: var(--sp-4);
+  min-width: 0;
+}
+.topbar .brand {
+  width: var(--sidebar-w);
+  flex: none;
+  padding: 0 var(--sp-4);
+  align-items: center;
+}
+.shell.no-sidebar .topbar .brand {
+  width: auto;
+}
+.topbar .brand-name {
+  font-size: var(--fs-md);
+}
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease);
+}
+.tab:hover,
+.tab.open {
+  color: var(--text);
+}
+.tab.active {
+  color: var(--text);
+}
+.tab.active::after {
+  content: "";
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--focus);
+}
+.tab-more {
+  margin-left: var(--sp-2);
+  color: var(--text-4);
+}
+.tab-more svg {
+  opacity: 0.7;
+}
+
+/* ============================================================ v0.7: sidebar sections */
+.sidebar {
+  padding-top: var(--sp-3);
+}
+.mini-cal {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.mini-cal.collapsed .mini-cal-head {
+  padding-bottom: 0;
+}
+.side-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  text-align: left;
+  color: inherit;
+}
+.side-toggle .eyebrow {
+  padding: 0 !important;
+}
+.side-toggle:hover .eyebrow,
+.side-toggle:hover {
+  color: var(--text-2);
+}
+.side-toggle .ftp-chev {
+  flex: none;
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 0 var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+.side-section.collapsed .side-head {
+  margin-bottom: 0;
+}
+.side-section {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+}
+.tpl-sub {
+  color: var(--text-4);
+}
+
+/* preset library (sidebar) */
+.preset-filter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 var(--sp-2);
+  padding: 0 var(--sp-1);
+}
+.preset-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-4);
+  background: var(--bg);
+}
+.preset-search:focus-within {
+  border-color: var(--border-strong);
+}
+.preset-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  user-select: text;
+}
+.preset-search.wide {
+  flex: 0 1 240px;
+  height: 28px;
+}
+.preset-search.wide input {
+  font-size: var(--fs-sm);
+}
+.preset-cat-filter {
+  max-width: 76px;
+  height: 22px;
+  background: transparent;
+  border: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  outline: none;
+}
+.icon-btn.fav,
+.preset-star {
+  color: var(--focus);
+}
+.plib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(34vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.plib-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 var(--sp-1) 0 0;
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.plib-row:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.plib-row.dragging {
+  opacity: 0.45;
+}
+.preset-grip {
+  flex: none;
+  color: var(--text-4);
+  opacity: 0;
+  margin-right: -4px;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.plib-row:hover .preset-grip,
+.preset-card:hover .preset-grip {
+  opacity: 1;
+}
+.preset-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-dur {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+.preset-empty {
+  padding: 0 var(--sp-1) var(--sp-1);
+  margin: 0;
+}
+.insert-before::before,
+.insert-after::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--focus);
+  pointer-events: none;
+}
+.insert-before::before {
+  top: -1px;
+}
+.insert-after::after {
+  bottom: -1px;
+}
+.preset-drag-chip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  background: var(--raised);
+  border: 1px solid color-mix(in oklab, var(--c) 60%, var(--border));
+  box-shadow: var(--shadow);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: nowrap;
+}
+.shell:has(.preset-drag-chip) {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* drop preview on a timeline: emphasised */
+.create-ghost.drop {
+  background: color-mix(in oklab, var(--c) 26%, transparent);
+  border: 1.5px solid var(--c);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.drop-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================ v0.7: template suggestions (ghosts) */
+.block.ghost-suggestion {
+  opacity: 0.32;
+  background: color-mix(in oklab, var(--c) 14%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--c) 80%, transparent);
+  cursor: pointer;
+  z-index: 0;
+  filter: saturate(0.7);
+}
+.block.ghost-suggestion::before {
+  display: none;
+}
+.block.ghost-suggestion:hover {
+  opacity: 0.62;
+  filter: none;
+  z-index: 2;
+}
+.block.ghost-suggestion .block-title {
+  font-weight: 500;
+}
+.ghost-icon {
+  flex: none;
+  opacity: 0.9;
+}
+.mini-act.subtle {
+  background: var(--raised);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
+}
+.timeline.preset-dragging .block-actions,
+.timeline.preset-dragging .block.ghost-suggestion {
+  pointer-events: none;
+}
+.tpl-toggle.on {
+  color: var(--focus);
+}
+.apply-tpl {
+  border-style: dashed;
+}
+.popover.conflicts {
+  width: 320px;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.conflict-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.conflict-list label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-sm);
+}
+.menu-head {
+  padding: 4px 10px 2px;
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-4);
+}
+.three-layers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.three-layers div {
+  display: grid;
+  gap: 1px;
+}
+.three-layers dt {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-4);
+}
+.three-layers dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.three-layers dd.tpl-val {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+/* focus-timer offer for blocks made from a preset */
+.focus-offer {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  animation: inspector-in var(--dur) var(--ease);
+}
+.fo-icon {
+  color: var(--c);
+}
+.fo-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+/* ============================================================ v0.7: Presets tab */
+.presets-view,
+.template-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.presets-page {
+  flex: 1;
+  min-width: 0;
+}
+.page-sub {
+  margin: 4px 0 0;
+}
+.presets-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip.sm {
+  height: 22px;
+  padding: 0 8px;
+  font-size: var(--fs-xs);
+}
+.chip:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.presets-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-6) 0;
+}
+.presets-page .plib-list {
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-top: 1px solid var(--border);
+}
+.plib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-2);
+}
+.preset-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px var(--sp-2);
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.presets-page .plib-list .preset-card {
+  height: 44px;
+}
+.plib-grid .preset-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--c);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  align-items: flex-start;
+  min-height: 64px;
+}
+.preset-card:hover {
+  background: var(--hover);
+}
+.preset-card.on {
+  background: var(--active);
+}
+.preset-card.dragging {
+  opacity: 0.45;
+}
+.preset-card-main {
+  flex: 1;
+  min-width: 0;
+}
+.preset-card-name {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-card-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fav-btn {
+  opacity: 0;
+}
+.preset-card:hover .fav-btn,
+.fav-btn.on {
+  opacity: 1;
+}
+.plib-editor,
+.tpl-panel {
+  width: var(--panel-w);
+  flex: none;
+}
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.preset-form,
+.tpl-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.pf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pf-label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.pf-hint {
+  margin: 0;
+}
+.pf-duration {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pf-duration .field.num {
+  width: 64px;
+}
+.pf-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+.pf-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pf-foot {
+  margin: 0;
+}
+
+/* ============================================================ v0.7: Template tab */
+.template-view .calendar {
+  flex: 1;
+  min-width: 0;
+}
+.cal-title.static {
+  cursor: default;
+}
+.tpl-header .tpl-sub {
+  margin: 4px 0 0;
+  max-width: 560px;
+  color: var(--text-3);
+}
+.tpl-dayhead {
+  grid-template-columns: 1fr auto;
+  cursor: default;
+}
+.tpl-dayhead:hover {
+  background: none;
+}
+.timeline.template-mode .tl-col {
+  background-image: none;
+}
+.tpl-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  padding-left: 0;
+}
+.tpl-time {
+  margin-top: -6px;
+}
+.tpl-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+.tpl-days li {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+}
+.tpl-hint {
+  margin: 0;
+}
+.popover.copy-day {
+  width: 300px;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+@media (max-width: 980px) {
+  .plib-editor,
+  .tpl-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: var(--shadow);
+  }
+  .tpl-panel:not(:has(.tpl-editor)) {
+    display: none;
+  }
+}

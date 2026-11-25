@@ -6,6 +6,7 @@ import { Timeline } from "./Timeline";
 import { MonthView } from "./MonthView";
 import { Segmented } from "./bits";
 import { TemplatesMenu } from "./TemplatesMenu";
+import { TemplateTools } from "./TemplateTools";
 import { addDays, dayKey, isSameDay, parseDayKey, startOfWeek } from "../domain/time";
 import { fmt } from "../domain/format";
 
@@ -100,6 +101,7 @@ export function CalendarView() {
               <ChevronRight size={16} />
             </button>
           </div>
+          <TemplateTools />
           {mode !== "month" && <TemplatesMenu />}
           <button
             className={`icon-btn ${settings.rightPanelOpen ? "on" : ""}`}
