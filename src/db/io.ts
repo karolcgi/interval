@@ -4,7 +4,8 @@
 import type { DbDriver, Statement } from "./driver";
 import * as repo from "./repo";
 import { LATEST_VERSION } from "./migrations";
-import type { Block, Category, DailyNote, Session, Tag } from "../domain/types";
+import type { Block, Budget, Category, DailyNote, DayTemplate, Session, Tag } from "../domain/types";
+import type { RecurrenceRule } from "../domain/recurrence";
 import { parseCsv, toCsv } from "../domain/csv";
 import { isoLocal } from "../domain/format";
 import { currentTimeZone, dayKey } from "../domain/time";
@@ -20,6 +21,9 @@ export interface ExportBundle {
   blocks: Block[];
   sessions: Session[];
   dailyNotes: DailyNote[];
+  recurrenceRules?: RecurrenceRule[]; // since 0.2
+  templates?: DayTemplate[]; // since 0.2
+  budgets?: Budget[]; // since 0.2
   settings: Record<string, unknown>;
 }
 
@@ -44,6 +48,9 @@ export async function exportJson(db: DbDriver): Promise<ExportBundle> {
     blocks: await repo.listAllBlocks(db),
     sessions: await repo.listAllSessions(db),
     dailyNotes: await repo.listDailyNotes(db),
+    recurrenceRules: await repo.listRules(db),
+    templates: await repo.listTemplates(db),
+    budgets: await repo.listBudgets(db),
     settings,
   };
 }
@@ -74,6 +81,9 @@ export async function importJson(db: DbDriver, data: unknown): Promise<{ blocks:
     stmts.push(...repo.upsertSessionStmts({ ...fixed, tagIds: mapTags(s.tagIds) }));
   }
   for (const n of b.dailyNotes ?? []) stmts.push(repo.upsertDailyNoteStmt(n));
+  for (const r of b.recurrenceRules ?? []) stmts.push(repo.upsertRuleStmt({ ...r, tagIds: mapTags(r.tagIds) }));
+  for (const t of b.templates ?? []) stmts.push(...repo.upsertTemplateStmts({ ...t, blocks: t.blocks.map((x) => ({ ...x, tagIds: mapTags(x.tagIds) })) }));
+  for (const bu of b.budgets ?? []) stmts.push(repo.upsertBudgetStmt({ ...bu, targetId: bu.targetType === "tag" ? (tagMap.get(bu.targetId) ?? bu.targetId) : bu.targetId }));
   await db.batch(stmts);
   return { blocks: b.blocks?.length ?? 0, sessions: b.sessions?.length ?? 0 };
 }

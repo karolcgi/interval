@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { t } from "../test/helpers";
-import { addDays, hoursInDay, minuteOfDay, previousRange, resolveRange, shiftDaysKeepClock, splitByDay, startOfDay, startOfWeek, HOUR, MINUTE } from "./time";
+import { addDays, dayKey, hoursInDay, minuteOfDay, previousRange, resolveRange, shiftDaysKeepClock, splitByDay, startOfDay, startOfWeek, HOUR, MINUTE } from "./time";
 import { findOverlaps, resolveOverlaps } from "./overlap";
 import { computeStats, expandCategoryIds } from "./stats";
 import { canMerge, dragToInterval, layoutColumns, moveInterval, pxToMinute, resizeInterval, snapMinute, splitInterval, splitPoint } from "./calendar";
 import type { Block, Category, Session } from "./types";
 import { fmtClock, fmtDuration, isoLocal } from "./format";
 import { parseCsv, toCsv } from "./csv";
+import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
 
 // ------------------------------------------------------------- fixtures
 
@@ -260,5 +261,47 @@ describe("formatting & csv", () => {
   it("round-trips CSV with quotes, commas and newlines", () => {
     const csv = toCsv(["a", "b"], [["x, y", 'say "hi"'], ["line\nbreak", ""]]);
     expect(parseCsv(csv)).toEqual([["a", "b"], ["x, y", 'say "hi"'], ["line\nbreak", ""]]);
+  });
+});
+
+// ------------------------------------------------------------- recurrence
+
+describe("recurrence rules", () => {
+  const days = (rrule: string, startsOn: string, from: [number, number, number], to: [number, number, number], endsOn: string | null = null) =>
+    occurrencesBetween({ rrule, startsOn, endsOn }, new Date(...from).getTime(), new Date(...to).getTime()).map((d) => dayKey(d));
+
+  it("parses and formats a readable subset of RRULE", () => {
+    const r = parseRule("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR,MO");
+    expect(r).toEqual({ freq: "WEEKLY", interval: 2, byDay: ["MO", "FR"], byMonthDay: null });
+    expect(formatRule(r)).toBe("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR");
+    expect(parseRule("garbage").freq).toBe("DAILY");
+  });
+
+  it("every weekday skips weekends", () => {
+    expect(days("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "2026-11-25", [2026, 10, 23], [2026, 11, 2])).toEqual([
+      "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-30", "2026-12-01", "2026-12-02",
+    ]);
+  });
+
+  it("every 2 weeks keeps parity from the start week", () => {
+    expect(days("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", "2026-11-27", [2026, 10, 1], [2027, 0, 1])).toEqual(["2026-11-27", "2026-12-11", "2026-12-25"]);
+  });
+
+  it("monthly on the 31st falls back to the last day of shorter months", () => {
+    expect(days("FREQ=MONTHLY;BYMONTHDAY=31", "2027-01-31", [2027, 0, 1], [2027, 3, 30])).toEqual(["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30"]);
+  });
+
+  it("daily with interval across the DST change, honouring ends_on", () => {
+    expect(days("FREQ=DAILY;INTERVAL=2", "2026-10-23", [2026, 9, 20], [2026, 10, 3], "2026-10-31")).toEqual([
+      "2026-10-23", "2026-10-25", "2026-10-27", "2026-10-29", "2026-10-31",
+    ]);
+  });
+
+  it("describes rules in plain language", () => {
+    expect(describeRule("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")).toBe("Every weekday");
+    expect(describeRule("FREQ=WEEKLY;BYDAY=FR")).toBe("Every week on Friday");
+    expect(describeRule("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH")).toBe("Every 2 weeks on Mon, Thu");
+    expect(describeRule("FREQ=MONTHLY;BYMONTHDAY=1")).toBe("Monthly on the 1st");
+    expect(describeRule("FREQ=DAILY")).toBe("Every day");
   });
 });

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DbDriver } from "../db/driver";
-import type { Block, Category, DailyNote, Id, Session, Settings, Tag } from "../domain/types";
+import type { Block, Budget, Category, DailyNote, DayTemplate, Id, Session, Settings, Tag } from "../domain/types";
+import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 
@@ -37,6 +38,9 @@ export interface AppState {
   storageLabel: string;
   categories: Category[];
   tags: Tag[];
+  rules: RecurrenceRule[];
+  templates: DayTemplate[];
+  budgets: Budget[];
   settings: Settings;
   view: View;
   calendarMode: CalendarMode;
@@ -68,6 +72,9 @@ const initial: AppState = {
   storageLabel: "",
   categories: [],
   tags: [],
+  rules: [],
+  templates: [],
+  budgets: [],
   settings: DEFAULT_SETTINGS,
   view: "calendar",
   calendarMode: "day",

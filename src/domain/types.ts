@@ -66,7 +66,41 @@ export interface DailyNote {
   date: string; // YYYY-MM-DD in local calendar
   intention: string | null;
   reflection: string | null;
+  plannedAt: number | null; // morning planning finished
+  reviewedAt: number | null; // evening review finished
   updatedAt: number;
+}
+
+export type BudgetPeriod = "day" | "week" | "month" | "year" | "lifetime";
+
+/** A time budget: a minimum target and/or a maximum limit for a category or tag over a period. */
+export interface Budget {
+  id: Id;
+  targetType: "category" | "tag";
+  targetId: Id;
+  period: BudgetPeriod;
+  minMinutes: number | null;
+  maxMinutes: number | null;
+  archivedAt: number | null;
+  createdAt: number;
+}
+
+export interface TemplateBlock {
+  id: Id;
+  startMinute: number; // local minute of day
+  durationMinutes: number;
+  categoryId: Id;
+  title: string | null;
+  tagIds: Id[];
+}
+
+/** A reusable day plan ("Freelance day"). Applying it creates normal planned blocks. */
+export interface DayTemplate {
+  id: Id;
+  name: string;
+  sortOrder: number;
+  blocks: TemplateBlock[];
+  createdAt: number;
 }
 
 export type ThemePref = "dark" | "light" | "system";

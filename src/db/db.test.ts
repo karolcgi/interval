@@ -8,6 +8,7 @@ import { exportCsv, exportJson, importCsv, importJson } from "./io";
 import { generateDemoData } from "./fixtures";
 import { store } from "../state/store";
 import * as A from "../state/actions";
+import * as P from "../state/planning";
 import { computeStats } from "../domain/stats";
 import { resolveRange, startOfDay, HOUR, MINUTE } from "../domain/time";
 
@@ -151,6 +152,122 @@ describe("calendar actions with undo/redo", () => {
     expect((await repo.listAllSessions(db))[0].categoryId).toBe(id);
     const unused = catId("Asset development");
     expect(await A.deleteOrArchiveCategory(unused)).toBe("deleted");
+  });
+});
+
+describe("recurring blocks and templates", () => {
+  let db: SqlJsDriver;
+  beforeEach(async () => {
+    db = await testDb();
+    await boot(db, t(2026, 11, 25, 8)); // Wednesday
+  });
+  const onDay = async (y: number, m: number, d: number) => (await repo.listBlocks(db, t(y, m, d), t(y, m, d + 1)));
+
+  it("materialises weekday occurrences as normal blocks, at the same local time across DST", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 16), end: t(2026, 11, 25, 17) }, catId("Studying"), { title: "Houdini", tagIds: [] });
+    await P.repeatFromBlock(b.id, "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR");
+    const rule = store.get().rules[0];
+    expect(rule.startMinute).toBe(16 * 60);
+    expect(await onDay(2026, 11, 28)).toHaveLength(0); // Saturday
+    const mon = await onDay(2026, 11, 30);
+    expect(mon).toHaveLength(1);
+    expect(mon[0]).toMatchObject({ title: "Houdini", recurrenceId: rule.id, status: "planned" });
+    expect(new Date(mon[0].startAt).getHours()).toBe(16);
+    // navigating further ahead extends the series; a day already generated is never regenerated
+    store.set({ date: t(2027, 3, 31) });
+    await A.refresh();
+    const afterDst = await onDay(2027, 3, 31); // Wednesday after spring-forward
+    expect(new Date(afterDst[0].startAt).getHours()).toBe(16);
+    expect(afterDst[0].endAt - afterDst[0].startAt).toBe(HOUR);
+    await A.refresh();
+    expect(await onDay(2027, 3, 31)).toHaveLength(1);
+  });
+
+  it("a deleted occurrence stays deleted", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 13), end: t(2026, 11, 25, 14) }, catId("Personal time"), { title: "Lunch" });
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    const thu = (await onDay(2026, 11, 26))[0];
+    store.set({ date: t(2026, 11, 26) });
+    await A.refresh();
+    await A.deleteBlocks([thu.id]);
+    await A.refresh();
+    expect(await onDay(2026, 11, 26)).toHaveLength(0);
+    expect(await onDay(2026, 11, 27)).toHaveLength(1);
+  });
+
+  it("apply to following splits the series; earlier occurrences are untouched", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    store.set({ date: t(2026, 11, 27) });
+    await A.refresh();
+    const fri = store.get().blocks[0];
+    await A.updateBlock(fri.id, { startAt: t(2026, 11, 27, 10), endAt: t(2026, 11, 27, 12) });
+    const moved = (await onDay(2026, 11, 27))[0];
+    expect(P.differsFromRule(moved, P.ruleOf(moved)!)).toBe(true);
+    await P.repeatFromBlock(fri.id, null);
+    const [oldRule, newRule] = store.get().rules;
+    expect(oldRule.endsOn).toBe("2026-11-26");
+    expect(newRule.startsOn).toBe("2026-11-27");
+    expect(new Date((await onDay(2026, 11, 26))[0].startAt).getHours()).toBe(9);
+    const sat = await onDay(2026, 11, 28);
+    expect(sat).toHaveLength(1);
+    expect(sat[0].recurrenceId).toBe(newRule.id);
+    expect(new Date(sat[0].startAt).getHours()).toBe(10);
+    expect(sat[0].endAt - sat[0].startAt).toBe(2 * HOUR);
+  });
+
+  it("stop repeating keeps recorded and past occurrences, removes later planned ones", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    await A.completeBlockManually(b.id);
+    store.set({ date: t(2026, 11, 27) });
+    await A.refresh();
+    const fri = store.get().blocks[0];
+    await P.stopRepeating(fri.id);
+    expect(await onDay(2026, 11, 25)).toHaveLength(1);
+    expect(await onDay(2026, 11, 27)).toHaveLength(1);
+    expect(await onDay(2026, 11, 28)).toHaveLength(0);
+    store.set({ date: t(2026, 12, 20) });
+    await A.refresh();
+    expect(await onDay(2026, 12, 20)).toHaveLength(0);
+    expect(await repo.listAllSessions(db)).toHaveLength(1);
+  });
+
+  it("delete this and following", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=DAILY");
+    const thu = (await onDay(2026, 11, 26))[0];
+    await P.deleteFollowing(thu.id);
+    expect(await onDay(2026, 11, 25)).toHaveLength(1);
+    expect(await onDay(2026, 11, 26)).toHaveLength(0);
+    expect(await onDay(2026, 12, 3)).toHaveLength(0);
+  });
+
+  it("saves a day as a template and applies it to another day (undoable)", async () => {
+    await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 12) }, catId("Freelance work"), { title: "Client" });
+    await A.createBlock({ start: t(2026, 11, 25, 13), end: t(2026, 11, 25, 13, 45) }, catId("Personal time"), { title: "Lunch" });
+    const tpl = await P.saveDayAsTemplate(t(2026, 11, 25), "Freelance day");
+    expect(tpl!.blocks.map((b) => [b.startMinute, b.durationMinutes, b.title])).toEqual([[540, 180, "Client"], [780, 45, "Lunch"]]);
+    await P.applyTemplate(tpl!.id, t(2027, 3, 29)); // the Monday after spring-forward
+    const applied = await onDay(2027, 3, 29);
+    expect(applied.map((b) => [new Date(b.startAt).getHours(), (b.endAt - b.startAt) / MINUTE])).toEqual([[9, 180], [13, 45]]);
+    await A.undo();
+    expect(await onDay(2027, 3, 29)).toHaveLength(0);
+    await P.renameTemplate(tpl!.id, "Client day");
+    expect(store.get().templates[0].name).toBe("Client day");
+    await P.deleteTemplate(tpl!.id);
+    expect(store.get().templates).toHaveLength(0);
+  });
+
+  it("rules, templates and budgets survive a JSON round trip", async () => {
+    const b = await A.createBlock({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) }, catId("Studying"));
+    await P.repeatFromBlock(b.id, "FREQ=WEEKLY;BYDAY=WE");
+    await P.saveDayAsTemplate(t(2026, 11, 25), "Study day");
+    const bundle = await exportJson(db);
+    const fresh = await testDb(null, false);
+    await importJson(fresh, JSON.parse(JSON.stringify(bundle)));
+    expect(await repo.listRules(fresh)).toHaveLength(1);
+    expect((await repo.listTemplates(fresh))[0].blocks).toHaveLength(1);
   });
 });
 

@@ -5,6 +5,7 @@ import * as A from "../state/actions";
 import { Timeline } from "./Timeline";
 import { MonthView } from "./MonthView";
 import { Segmented } from "./bits";
+import { TemplatesMenu } from "./TemplatesMenu";
 import { addDays, dayKey, isSameDay, parseDayKey, startOfWeek } from "../domain/time";
 import { fmt } from "../domain/format";
 
@@ -99,6 +100,7 @@ export function CalendarView() {
               <ChevronRight size={16} />
             </button>
           </div>
+          {mode !== "month" && <TemplatesMenu />}
           <button
             className={`icon-btn ${settings.rightPanelOpen ? "on" : ""}`}
             onClick={() => void A.updateSettings({ rightPanelOpen: !settings.rightPanelOpen })}

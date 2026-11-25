@@ -4,8 +4,9 @@
 import { store, type CalendarMode, type PausedTimer, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
 import * as repo from "../db/repo";
-import type { Block, Category, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
+import { ensureOccurrences } from "./planning";
 import { findMergeCandidate, mergedInterval, splitInterval, splitPoint } from "../domain/calendar";
 
 // ------------------------------------------------------------------ helpers
@@ -71,9 +72,10 @@ function invert(changes: Change[]): Change[] {
   return changes.map((c) => ({ ...c, before: c.after, after: c.before }) as Change);
 }
 
-export async function commit(label: string, changes: Change[], opts: { undoable?: boolean; silent?: boolean } = {}) {
-  if (changes.length === 0) return;
-  await db().batch(forward(changes));
+export async function commit(label: string, changes: Change[], opts: { undoable?: boolean; silent?: boolean; extra?: Statement[] } = {}) {
+  if (changes.length === 0 && !opts.extra?.length) return;
+  // `extra` statements (e.g. recurrence rule edits) run first, in the same transaction.
+  await db().batch([...(opts.extra ?? []), ...forward(changes)]);
   if (opts.undoable !== false) {
     undoStack.push({ label, changes });
     if (undoStack.length > MAX_UNDO) undoStack.shift();
@@ -137,6 +139,8 @@ export async function refresh() {
   const seq = ++refreshSeq;
   const range = visibleRange(s.date, s.calendarMode, s.settings.weekStartsOn);
   const today = startOfDay(Date.now());
+  await ensureOccurrences(Math.max(range.end - 1, addDays(today, 14)));
+  if (seq !== refreshSeq) return;
   const [blocks, sessions, tBlocks, tSessions, running, note] = await Promise.all([
     repo.listBlocks(s.db, range.start, range.end),
     repo.listSessions(s.db, range.start, range.end),
@@ -161,14 +165,17 @@ export async function refresh() {
 
 export async function reloadMeta() {
   const d = db();
-  const [categories, tags, settings, paused, acc] = await Promise.all([
+  const [categories, tags, settings, paused, acc, rules, templates, budgets] = await Promise.all([
     repo.listCategories(d),
     repo.listTags(d),
     repo.loadSettings(d),
     repo.getSetting<PausedTimer>(d, "timer.paused"),
     repo.getSetting<number>(d, "timer.accumulated"),
+    repo.listRules(d),
+    repo.listTemplates(d),
+    repo.listBudgets(d),
   ]);
-  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0 });
+  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets });
 }
 
 // -------------------------------------------------------------- navigation
@@ -315,12 +322,21 @@ export async function deleteTag(id: Id) {
   await refresh();
 }
 
-export async function saveDailyNote(patch: { intention?: string | null; reflection?: string | null }) {
+export async function saveDailyNote(patch: Partial<Pick<DailyNote, "intention" | "reflection" | "plannedAt" | "reviewedAt">>, date = dayKey(store.get().date)) {
   const s = store.get();
-  const date = dayKey(s.date);
-  const note = { date, intention: s.dailyNote?.intention ?? null, reflection: s.dailyNote?.reflection ?? null, ...patch, updatedAt: Date.now() };
+  const current = s.dailyNote?.date === date ? s.dailyNote : await repo.getDailyNote(db(), date);
+  const note: DailyNote = {
+    date,
+    intention: current?.intention ?? null,
+    reflection: current?.reflection ?? null,
+    plannedAt: current?.plannedAt ?? null,
+    reviewedAt: current?.reviewedAt ?? null,
+    ...patch,
+    updatedAt: Date.now(),
+  };
   await db().batch([repo.upsertDailyNoteStmt(note)]);
-  store.set({ dailyNote: note });
+  if (dayKey(store.get().date) === date) store.set({ dailyNote: note });
+  return note;
 }
 
 // ------------------------------------------------------------------ blocks

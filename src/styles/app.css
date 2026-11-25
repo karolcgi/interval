@@ -2273,3 +2273,150 @@ textarea.field {
   font-size: var(--fs-xs);
   color: var(--text-4);
 }
+
+/* ------------------------------------------------------------ Phase 2: repeat */
+.repeat {
+  display: grid;
+  gap: 8px;
+}
+.repeat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.repeat-select {
+  flex: 1;
+  min-width: 0;
+}
+.repeat-meta {
+  line-height: 1.4;
+}
+.day-chips {
+  display: flex;
+  gap: 4px;
+}
+.day-chip {
+  flex: 1;
+  height: 24px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-weight: 500;
+}
+.day-chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.day-chip.on {
+  background: var(--active);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.repeat-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.link-btn {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  padding: 2px 0;
+}
+.link-btn:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn.danger:hover {
+  color: var(--now);
+}
+
+/* --------------------------------------------------------- Phase 2: templates */
+.templates {
+  position: fixed;
+  z-index: 100;
+  width: 300px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.tpl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 2px;
+}
+.tpl-empty {
+  margin: 0;
+  padding: 2px;
+  line-height: 1.45;
+}
+.tpl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.tpl-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 2px;
+  border-top: 1px solid var(--border);
+}
+.tpl-row:first-child {
+  border-top: 0;
+}
+.tpl-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.tpl-name {
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-rename {
+  height: 22px;
+  font-weight: 600;
+}
+.tpl-strip {
+  position: relative;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--grid);
+  overflow: hidden;
+}
+.tpl-strip span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+  opacity: 0.85;
+}
+.tpl-replace {
+  margin-left: 8px;
+}
+.tpl-acts {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.tpl-save {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.tpl-save .field {
+  flex: 1;
+  min-width: 0;
+}

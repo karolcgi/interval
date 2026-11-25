@@ -9,6 +9,7 @@ import { addDays, atMinute, isSameDay, startOfDay } from "../domain/time";
 import { fmt, fmtClock, fmtDuration, fmtTime } from "../domain/format";
 import { catVars, CategorySelect, Segmented } from "./bits";
 import { TagInput } from "./TagInput";
+import { RepeatSection } from "./RepeatSection";
 import { openExternal } from "../platform";
 import { findMergeCandidate } from "../domain/calendar";
 
@@ -251,6 +252,9 @@ function BlockInspector({ block }: { block: Block }) {
           ]}
         />
       </div>
+
+      <label className="insp-label">Repeat</label>
+      <RepeatSection block={block} />
 
       <div className="insp-actions">
         {isRunningHere ? (
