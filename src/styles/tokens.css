@@ -1,0 +1,109 @@
+/* Interval design tokens.
+   Neutral, warm-grey palette; colour is reserved for activity categories and the
+   single user accent. Everything else is expressed through value (lightness),
+   type weight and spacing. */
+
+:root {
+  --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-feat: "cv11", "ss01", "tnum";
+
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+
+  --sidebar-w: 224px;
+  --panel-w: 280px;
+  --row-h: 28px;
+  --gutter-w: 56px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 90ms;
+  --dur: 160ms;
+
+  --accent: #d5d3ca;
+}
+
+/* Dark (default) — sampled from the original mockup */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17181b;
+  --surface: #1e1f23;
+  --raised: #25262a;
+  --overlay: #2a2b30;
+  --hover: #2b2c31;
+  --active: #34353a;
+  --border: #36373b;
+  --border-soft: #2c2d31;
+  --border-strong: #44454a;
+  --grid: #26272b;
+  --grid-half: #212226;
+  --text: #ecece7;
+  --text-2: #c9c9cb;
+  --text-3: #9a9ba2;
+  --text-4: #75767c;
+  --now: #e79b8b;
+  --danger: #e58a7b;
+  --ok: #8bbca0;
+  --shadow: 0 8px 28px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.04);
+  --block-fill: 19%;
+  --block-fill-planned: 7%;
+  --block-border: 42%;
+  --cat-text-mix: 100%;
+  --cat-text-base: white;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fbfaf7;
+  --surface: #f3f2ee;
+  --raised: #ffffff;
+  --overlay: #ffffff;
+  --hover: #ebe9e4;
+  --active: #e3e1db;
+  --border: #e0ded8;
+  --border-soft: #ebe9e4;
+  --border-strong: #cfccc4;
+  --grid: #ecebe6;
+  --grid-half: #f3f2ee;
+  --text: #1c1c1e;
+  --text-2: #424246;
+  --text-3: #6f6f75;
+  --text-4: #9a9aa0;
+  --now: #d4604a;
+  --danger: #c4513f;
+  --ok: #4f8d6a;
+  --shadow: 0 8px 28px rgb(30 25 15 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --block-fill: 17%;
+  --block-fill-planned: 6%;
+  --block-border: 50%;
+  --cat-text-mix: 62%;
+  --cat-text-base: black;
+}
+
+:root[data-density="compact"] {
+  --fs-md: 12px;
+  --fs-sm: 11.5px;
+  --row-h: 24px;
+  --sidebar-w: 200px;
+  --panel-w: 256px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+}

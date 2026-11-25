@@ -1,0 +1,264 @@
+import { describe, expect, it } from "vitest";
+import { t } from "../test/helpers";
+import { addDays, hoursInDay, minuteOfDay, previousRange, resolveRange, shiftDaysKeepClock, splitByDay, startOfDay, startOfWeek, HOUR, MINUTE } from "./time";
+import { findOverlaps, resolveOverlaps } from "./overlap";
+import { computeStats, expandCategoryIds } from "./stats";
+import { canMerge, dragToInterval, layoutColumns, moveInterval, pxToMinute, resizeInterval, snapMinute, splitInterval, splitPoint } from "./calendar";
+import type { Block, Category, Session } from "./types";
+import { fmtClock, fmtDuration, isoLocal } from "./format";
+import { parseCsv, toCsv } from "./csv";
+
+// ------------------------------------------------------------- fixtures
+
+const cat = (id: string, extra: Partial<Category> = {}): Category => ({
+  id, name: id, color: "#888", icon: null, parentId: null, sortOrder: 0, shortcut: null, isBreak: false, archivedAt: null, createdAt: 0, updatedAt: 0, ...extra,
+});
+const CATS = [cat("work"), cat("study"), cat("houdini-study", { parentId: "study" }), cat("break", { isBreak: true })];
+
+let seq = 0;
+const sess = (start: number, end: number | null, categoryId: string, tagIds: string[] = [], extra: Partial<Session> = {}): Session => ({
+  id: `s${++seq}`, startAt: start, endAt: end, tz: "Europe/Warsaw", categoryId, blockId: null, title: null, notes: null, mode: "stopwatch", tagIds, createdAt: start, updatedAt: start, ...extra,
+});
+const blk = (start: number, end: number, categoryId: string, status: Block["status"] = "planned", tagIds: string[] = []): Block => ({
+  id: `b${++seq}`, startAt: start, endAt: end, tz: "Europe/Warsaw", categoryId, title: null, notes: null, link: null, status, recurrenceId: null, tagIds, createdAt: start, updatedAt: start,
+});
+
+// ----------------------------------------------------------------- time
+
+describe("time zones and day boundaries (Europe/Warsaw)", () => {
+  it("splits a session crossing midnight into two local days", () => {
+    const parts = splitByDay({ start: t(2026, 11, 24, 23), end: t(2026, 11, 25, 1, 30) });
+    expect(parts.map((p) => p.day)).toEqual(["2026-11-24", "2026-11-25"]);
+    expect(parts[0].end - parts[0].start).toBe(1 * HOUR);
+    expect(parts[1].end - parts[1].start).toBe(1.5 * HOUR);
+  });
+
+  it("knows DST days have 23 and 25 hours", () => {
+    expect(hoursInDay(t(2026, 3, 29))).toBe(23); // spring forward
+    expect(hoursInDay(t(2026, 10, 25))).toBe(25); // fall back
+    expect(hoursInDay(t(2026, 11, 25))).toBe(24);
+  });
+
+  it("measures durations across a DST change in real elapsed time", () => {
+    // 01:00 -> 04:00 local on the spring-forward night is only 2 real hours
+    const s = sess(t(2026, 3, 29, 1), t(2026, 3, 29, 4), "work");
+    const st = computeStats({ sessions: [s], blocks: [], categories: CATS, range: { start: t(2026, 3, 29), end: t(2026, 3, 30) }, now: t(2026, 4, 1) });
+    expect(st.recordedMs).toBe(2 * HOUR);
+  });
+
+  it("addDays lands on local midnight even across DST", () => {
+    const d = addDays(t(2026, 3, 28), 1);
+    expect(new Date(d).getHours()).toBe(0);
+    expect(new Date(addDays(t(2026, 10, 24), 2)).getDate()).toBe(26);
+  });
+
+  it("copying a block to the next day keeps its wall-clock time across DST", () => {
+    const moved = shiftDaysKeepClock(t(2026, 3, 28, 9), 1);
+    expect(minuteOfDay(moved)).toBe(9 * 60);
+  });
+
+  it("resolves named ranges with Monday week start", () => {
+    const now = t(2026, 11, 25, 10); // Wednesday
+    const lw = resolveRange("last_week", now, 1);
+    expect(lw.start).toBe(t(2026, 11, 16));
+    expect(lw.end).toBe(t(2026, 11, 23));
+    const ty = resolveRange("this_year", now, 1);
+    expect(ty.start).toBe(t(2026, 1, 1));
+    expect(ty.end).toBe(t(2027, 1, 1));
+    expect(resolveRange("this_quarter", now, 1).start).toBe(t(2026, 10, 1));
+    expect(resolveRange("custom", now, 1, { from: "2026-11-10", to: "2026-11-01" })).toEqual({ start: t(2026, 11, 1), end: t(2026, 11, 11) });
+    expect(startOfWeek(now, 0)).toBe(t(2026, 11, 22));
+  });
+
+  it("previous period mirrors month shapes", () => {
+    expect(previousRange({ start: t(2026, 3, 1), end: t(2026, 4, 1) })).toEqual({ start: t(2026, 2, 1), end: t(2026, 3, 1) });
+    expect(previousRange({ start: t(2026, 11, 16), end: t(2026, 11, 23) })).toEqual({ start: t(2026, 11, 9), end: t(2026, 11, 16) });
+  });
+});
+
+// -------------------------------------------------------------- overlap
+
+describe("overlap policy: latest start wins, totals never exceed wall-clock time", () => {
+  it("keeps disjoint intervals unchanged", () => {
+    const r = resolveOverlaps([{ id: "a", start: 0, end: 10 }, { id: "b", start: 20, end: 30 }]);
+    expect(r).toEqual([{ id: "a", start: 0, end: 10 }, { id: "b", start: 20, end: 30 }]);
+  });
+
+  it("gives the overlap to the session that started later", () => {
+    const r = resolveOverlaps([{ id: "a", start: 0, end: 60 }, { id: "b", start: 30, end: 90 }]);
+    expect(r).toEqual([{ id: "a", start: 0, end: 30 }, { id: "b", start: 30, end: 90 }]);
+  });
+
+  it("handles a session nested inside another (a resumes afterwards)", () => {
+    const r = resolveOverlaps([{ id: "a", start: 0, end: 100 }, { id: "b", start: 40, end: 60 }]);
+    expect(r).toEqual([{ id: "a", start: 0, end: 40 }, { id: "b", start: 40, end: 60 }, { id: "a", start: 60, end: 100 }]);
+    expect(r.reduce((s, x) => s + x.end - x.start, 0)).toBe(100);
+  });
+
+  it("breaks exact ties deterministically", () => {
+    const r = resolveOverlaps([{ id: "a", start: 0, end: 10, createdAt: 1 }, { id: "b", start: 0, end: 10, createdAt: 2 }]);
+    expect(r).toEqual([{ id: "b", start: 0, end: 10 }]);
+  });
+
+  it("reports overlapping pairs", () => {
+    expect(findOverlaps([{ id: "a", start: 0, end: 10 }, { id: "b", start: 5, end: 15 }, { id: "c", start: 20, end: 30 }])).toEqual([["a", "b"]]);
+  });
+
+  it("stats total of overlapping sessions equals their union", () => {
+    const a = sess(t(2026, 11, 25, 9), t(2026, 11, 25, 11), "work");
+    const b = sess(t(2026, 11, 25, 10), t(2026, 11, 25, 12), "study");
+    const st = computeStats({ sessions: [a, b], blocks: [], categories: CATS, range: { start: t(2026, 11, 25), end: t(2026, 11, 26) }, now: t(2026, 11, 26) });
+    expect(st.recordedMs).toBe(3 * HOUR);
+    expect(st.byCategory.find((c) => c.categoryId === "work")!.recordedMs).toBe(1 * HOUR);
+    expect(st.byCategory.find((c) => c.categoryId === "study")!.recordedMs).toBe(2 * HOUR);
+  });
+});
+
+// ---------------------------------------------------------------- stats
+
+describe("statistics", () => {
+  const day = { start: t(2026, 11, 25), end: t(2026, 11, 26) };
+  const now = t(2026, 11, 25, 18);
+
+  it("counts actual sessions only, never planned or skipped blocks", () => {
+    const st = computeStats({
+      sessions: [sess(t(2026, 11, 25, 15, 10), t(2026, 11, 25, 16, 20), "study")],
+      blocks: [blk(t(2026, 11, 25, 15), t(2026, 11, 25, 16, 30), "study", "completed"), blk(t(2026, 11, 25, 17), t(2026, 11, 25, 18), "work", "skipped"), blk(t(2026, 11, 25, 20), t(2026, 11, 25, 21), "work")],
+      categories: CATS, range: day, now,
+    });
+    expect(st.recordedMs).toBe(70 * MINUTE);
+    expect(st.plannedMs).toBe(90 * MINUTE + 60 * MINUTE); // skipped block excluded
+  });
+
+  it("counts multi-tag sessions once in totals but fully per tag", () => {
+    const st = computeStats({ sessions: [sess(t(2026, 11, 25, 9), t(2026, 11, 25, 10), "study", ["houdini", "vex"])], blocks: [], categories: CATS, range: day, now });
+    expect(st.recordedMs).toBe(HOUR);
+    expect(st.byTag.find((x) => x.tagId === "houdini")!.recordedMs).toBe(HOUR);
+    expect(st.byTag.find((x) => x.tagId === "vex")!.recordedMs).toBe(HOUR);
+    expect(st.byCategory.find((x) => x.categoryId === "study")!.recordedMs).toBe(HOUR);
+  });
+
+  it("filters by tag and by category (including subcategories)", () => {
+    const sessions = [
+      sess(t(2026, 11, 25, 9), t(2026, 11, 25, 10), "study", ["houdini"]),
+      sess(t(2026, 11, 25, 10), t(2026, 11, 25, 11, 30), "study", ["drawing"]),
+      sess(t(2026, 11, 25, 12), t(2026, 11, 25, 12, 30), "houdini-study"),
+      sess(t(2026, 11, 25, 13), t(2026, 11, 25, 17), "work", ["houdini"]),
+    ];
+    const studyOnly = computeStats({ sessions, blocks: [], categories: CATS, range: day, now, filter: { categoryIds: ["study"] } });
+    expect(studyOnly.recordedMs).toBe(3 * HOUR);
+    const studyHoudini = computeStats({ sessions, blocks: [], categories: CATS, range: day, now, filter: { categoryIds: ["study"], tagIds: ["houdini"] } });
+    expect(studyHoudini.recordedMs).toBe(HOUR);
+    expect(expandCategoryIds(["study"], CATS).has("houdini-study")).toBe(true);
+  });
+
+  it("clips to the range and splits midnight-crossing sessions per day", () => {
+    const s = sess(t(2026, 11, 24, 23), t(2026, 11, 25, 2), "work");
+    const st = computeStats({ sessions: [s], blocks: [], categories: CATS, range: day, now });
+    expect(st.recordedMs).toBe(2 * HOUR);
+    const wk = computeStats({ sessions: [s], blocks: [], categories: CATS, range: { start: t(2026, 11, 23), end: t(2026, 11, 30) }, now });
+    expect(wk.byDay.get("2026-11-24")!.get("work")).toBe(HOUR);
+    expect(wk.byDay.get("2026-11-25")!.get("work")).toBe(2 * HOUR);
+  });
+
+  it("counts a running session up to now", () => {
+    const st = computeStats({ sessions: [sess(t(2026, 11, 25, 17), null, "work")], blocks: [], categories: CATS, range: day, now });
+    expect(st.recordedMs).toBe(HOUR);
+  });
+
+  it("reports break time separately", () => {
+    const st = computeStats({ sessions: [sess(t(2026, 11, 25, 9), t(2026, 11, 25, 10), "work"), sess(t(2026, 11, 25, 10), t(2026, 11, 25, 10, 15), "break")], blocks: [], categories: CATS, range: day, now });
+    expect(st.recordedMs).toBe(HOUR);
+    expect(st.breakMs).toBe(15 * MINUTE);
+    expect(st.sessionCount).toBe(1);
+  });
+
+  it("buckets by week and month for long ranges", () => {
+    const sessions = [sess(t(2026, 1, 5, 9), t(2026, 1, 5, 10), "work"), sess(t(2026, 2, 10, 9), t(2026, 2, 10, 11), "work")];
+    const st = computeStats({ sessions, blocks: [], categories: CATS, range: { start: t(2026, 1, 1), end: t(2027, 1, 1) }, now, bucket: "month" });
+    expect(st.buckets).toHaveLength(12);
+    expect(st.buckets[0].totalMs).toBe(HOUR);
+    expect(st.buckets[1].totalMs).toBe(2 * HOUR);
+  });
+});
+
+// ------------------------------------------------------------- calendar
+
+describe("calendar interactions", () => {
+  const day = t(2026, 11, 25);
+
+  it("snaps minutes", () => {
+    expect(snapMinute(547, 15)).toBe(540);
+    expect(snapMinute(553, 15)).toBe(555);
+    expect(snapMinute(553, 5)).toBe(555);
+    expect(pxToMinute(112, 56, 0, 15)).toBe(120);
+  });
+
+  it("drag 09:00 → 11:30 creates that interval, in either direction", () => {
+    expect(dragToInterval(day, 540, 690, 15)).toEqual({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 11, 30) });
+    expect(dragToInterval(day, 690, 540, 15)).toEqual({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 11, 30) });
+    expect(dragToInterval(day, 540, 540, 15)).toEqual({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 9, 15) });
+  });
+
+  it("moves keep duration, including to another day", () => {
+    const iv = { start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10, 30) };
+    expect(moveInterval(iv, t(2026, 11, 27), 14 * 60)).toEqual({ start: t(2026, 11, 27, 14), end: t(2026, 11, 27, 15, 30) });
+  });
+
+  it("resizes either edge with a minimum length", () => {
+    const iv = { start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) };
+    expect(resizeInterval(iv, "end", 11 * 60, 15).end).toBe(t(2026, 11, 25, 11));
+    expect(resizeInterval(iv, "start", 8 * 60, 15).start).toBe(t(2026, 11, 25, 8));
+    expect(resizeInterval(iv, "end", 8 * 60, 15).end).toBe(t(2026, 11, 25, 9, 15)); // cannot invert
+    expect(resizeInterval(iv, "end", 1440, 15).end).toBe(t(2026, 11, 26)); // to midnight
+  });
+
+  it("splits and refuses slivers", () => {
+    const iv = { start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10) };
+    expect(splitInterval(iv, t(2026, 11, 25, 9, 30))).toEqual([{ start: iv.start, end: t(2026, 11, 25, 9, 30) }, { start: t(2026, 11, 25, 9, 30), end: iv.end }]);
+    expect(splitInterval(iv, t(2026, 11, 25, 9, 2))).toBeNull();
+    expect(splitPoint({ start: t(2026, 11, 25, 9), end: t(2026, 11, 25, 10, 10) }, 15)).toBe(t(2026, 11, 25, 9, 30));
+  });
+
+  it("merges only same-category adjacent blocks", () => {
+    const a = blk(t(2026, 11, 25, 9), t(2026, 11, 25, 10), "work");
+    const b = blk(t(2026, 11, 25, 10), t(2026, 11, 25, 11), "work");
+    const c = blk(t(2026, 11, 25, 11), t(2026, 11, 25, 12), "study");
+    const d = blk(t(2026, 11, 25, 13), t(2026, 11, 25, 14), "work");
+    expect(canMerge(a, b)).toBe(true);
+    expect(canMerge(b, c)).toBe(false);
+    expect(canMerge(a, d)).toBe(false);
+  });
+
+  it("lays overlapping blocks side by side", () => {
+    const lay = layoutColumns([
+      { id: "a", startAt: 0, endAt: 10 },
+      { id: "b", startAt: 5, endAt: 15 },
+      { id: "c", startAt: 20, endAt: 30 },
+    ]);
+    expect(lay.get("a")).toEqual({ col: 0, cols: 2 });
+    expect(lay.get("b")).toEqual({ col: 1, cols: 2 });
+    expect(lay.get("c")).toEqual({ col: 0, cols: 1 });
+  });
+
+  it("startOfDay is stable", () => {
+    expect(startOfDay(t(2026, 11, 25, 23, 59))).toBe(day);
+  });
+});
+
+describe("formatting & csv", () => {
+  it("formats durations and clocks", () => {
+    expect(fmtDuration(4 * HOUR)).toBe("4h 00m");
+    expect(fmtDuration(45 * MINUTE)).toBe("45m");
+    expect(fmtDuration(70 * MINUTE, { compact: true })).toBe("1h 10m");
+    expect(fmtClock(3723_000)).toBe("1:02:03");
+  });
+  it("writes local ISO with offset", () => {
+    expect(isoLocal(t(2026, 11, 25, 9))).toBe("2026-11-25T09:00:00+01:00");
+    expect(isoLocal(t(2026, 7, 1, 9))).toBe("2026-07-01T09:00:00+02:00");
+  });
+  it("round-trips CSV with quotes, commas and newlines", () => {
+    const csv = toCsv(["a", "b"], [["x, y", 'say "hi"'], ["line\nbreak", ""]]);
+    expect(parseCsv(csv)).toEqual([["a", "b"], ["x, y", 'say "hi"'], ["line\nbreak", ""]]);
+  });
+});
