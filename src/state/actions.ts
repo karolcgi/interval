@@ -5,7 +5,7 @@ import { store, type CalendarMode, type PausedTimer, type View } from "./store";
 import type { DbDriver, Statement } from "../db/driver";
 import type { FocusState } from "../domain/focus";
 import * as repo from "../db/repo";
-import type { Block, Budget, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
+import type { Block, Budget, PersonalAchievement, Category, DailyNote, Id, Interval, Session, SessionMode, Settings, Tag } from "../domain/types";
 import { addDays, addMonths, currentTimeZone, dayKey, MINUTE, shiftDaysKeepClock, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { ensureOccurrences } from "./planning";
 import { focusUserStop, nextRound as focusNextRound, setFocusState } from "./focus";
@@ -167,7 +167,7 @@ export async function refresh() {
 
 export async function reloadMeta() {
   const d = db();
-  const [categories, tags, settings, paused, acc, rules, templates, budgets] = await Promise.all([
+  const [categories, tags, settings, paused, acc, rules, templates, budgets, achievements] = await Promise.all([
     repo.listCategories(d),
     repo.listTags(d),
     repo.loadSettings(d),
@@ -176,9 +176,10 @@ export async function reloadMeta() {
     repo.listRules(d),
     repo.listTemplates(d),
     repo.listBudgets(d),
+    repo.listAchievements(d),
   ]);
   const focus = await repo.getSetting<FocusState>(d, "timer.focus");
-  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, focus });
+  store.set({ categories, tags, settings, paused, runAccumulatedMs: acc ?? 0, rules, templates, budgets, achievements, focus });
 }
 
 // -------------------------------------------------------------- navigation
@@ -354,6 +355,19 @@ export async function saveBudget(b: Budget) {
 export async function deleteBudget(id: Id) {
   await db().batch([repo.deleteBudgetStmt(id)]);
   store.set({ budgets: await repo.listBudgets(db()) });
+}
+
+// ------------------------------------------------------------- achievements
+
+export async function saveAchievement(a: PersonalAchievement) {
+  if (!a.title.trim()) throw new Error("Give the achievement a title.");
+  await db().batch([repo.upsertAchievementStmt({ ...a, title: a.title.trim(), note: a.note?.trim() || null })]);
+  store.set({ achievements: await repo.listAchievements(db()) });
+}
+
+export async function deleteAchievement(id: Id) {
+  await db().batch([repo.deleteAchievementStmt(id)]);
+  store.set({ achievements: await repo.listAchievements(db()) });
 }
 
 // ------------------------------------------------------------------ blocks

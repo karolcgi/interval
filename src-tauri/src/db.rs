@@ -187,6 +187,31 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
     fs::rename(&tmp, &target).map_err(err)
 }
 
+/// Write a generated Markdown note inside the user's Obsidian folder: `<dir>/<rel>`.
+/// Creates missing folders. Never overwrites a file Interval did not write: an existing file is
+/// replaced only if it contains the `generator: interval` frontmatter marker.
+#[tauri::command]
+pub fn write_vault_file(dir: String, rel: String, contents: String) -> Result<String, String> {
+    let rel_path = Path::new(&rel);
+    if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Invalid file name".into());
+    }
+    let target = PathBuf::from(&dir).join(rel_path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(err)?;
+    }
+    if target.exists() {
+        let existing = fs::read_to_string(&target).unwrap_or_default();
+        if !existing.contains("generator: interval") {
+            return Err(format!("{} already exists and was not written by Interval, so it was left alone", target.display()));
+        }
+    }
+    let tmp = target.with_extension("tmp-interval");
+    fs::write(&tmp, contents.as_bytes()).map_err(err)?;
+    fs::rename(&tmp, &target).map_err(err)?;
+    Ok(target.display().to_string())
+}
+
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(err)

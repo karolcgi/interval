@@ -101,9 +101,24 @@ const longDate = { format: (t: number) => `${wd.format(t)} ${new Date(t).getDate
  *
  *   **Total 6h 05m** · Freelance work 4h · Studying 2h 05m · Breaks 15m
  */
-export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; heading?: boolean } = {}): string {
+export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; heading?: boolean; frontmatter?: boolean } = {}): string {
   const tf = opts.timeFormat ?? "24h";
   const lines: string[] = [];
+  if (opts.frontmatter) {
+    const h = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10;
+    const slug = (n: string) => n.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "x";
+    lines.push(
+      "---",
+      "type: interval-day",
+      `date: ${dayKey(log.day)}`,
+      `total_hours: ${h(log.totalMs)}`,
+      ...log.byCategory.map((c) => `hours_${slug(c.name)}: ${h(c.ms)}`),
+      ...(log.breakMs > 0 ? [`break_hours: ${h(log.breakMs)}`] : []),
+      "generator: interval",
+      "---",
+      "",
+    );
+  }
   if (opts.heading !== false) lines.push(`# ${longDate.format(log.day)}`, "");
   if (!log.entries.length) {
     lines.push("Nothing recorded.");

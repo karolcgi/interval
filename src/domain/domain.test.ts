@@ -11,6 +11,9 @@ import { flowtimeBreakMinutes, breakLength, nextStep, type FocusState } from "./
 import { activeRuns } from "./analytics";
 import { describeRule, formatRule, occurrencesBetween, parseRule } from "./recurrence";
 import { buildDayLog, dayLogMarkdown, rangeLogMarkdown } from "./daylog";
+import { buildLedger, deriveAchievements, milestoneProgress, weekStreak, balancedWeeks, DEFAULT_LADDER } from "./progression";
+import { comparisonOf, isoWeek, periodFileName, periodOf, periodSummary, summaryMarkdown } from "./summary";
+import { bindings, comboOf, prettyKey } from "../state/shortcuts";
 
 // ------------------------------------------------------------- fixtures
 
@@ -377,5 +380,107 @@ describe("day log", () => {
     const d2 = buildDayLog(addDays(D, 1), [sess(t(2026, 11, 26, 9), t(2026, 11, 26, 10), "work")], [], CATS, [], t(2026, 11, 27));
     const md = rangeLogMarkdown([empty, d2]);
     expect(md.startsWith("## Thursday 26 November 2026\n\n- 09:00–10:00 **work** · 1h")).toBe(true);
+  });
+});
+
+describe("progression", () => {
+  it("accumulates lifetime hours per tag and category (parents include children) and dates each milestone", () => {
+    const sessions: Session[] = [];
+    // 3h of Houdini study on 5 days a week for 4 weeks = 60h
+    for (let w = 0; w < 4; w++) for (let d = 0; d < 5; d++) sessions.push(sess(t(2026, 10, 5 + w * 7 + d, 9), t(2026, 10, 5 + w * 7 + d, 12), "houdini-study", ["houdini"]));
+    sessions.push(sess(t(2026, 10, 5, 12), t(2026, 10, 5, 13), "break"));
+    const L = buildLedger(sessions, CATS, t(2026, 11, 1));
+    const p = milestoneProgress(L.byTag.get("houdini"), DEFAULT_LADDER);
+    expect(p.totalMs).toBe(60 * HOUR);
+    expect(p.reached.map((r) => r.hours)).toEqual([10, 25, 50]);
+    expect(p.reached[0].day).toBe("2026-10-08"); // 4th day: 12h
+    expect(p.nextHours).toBe(100);
+    expect(p.pctToNext).toBeCloseTo(10 / 50);
+    // parent "study" includes its subcategory; breaks are not intentional time
+    expect(milestoneProgress(L.byCategory.get("study"), DEFAULT_LADDER).totalMs).toBe(60 * HOUR);
+    expect([...L.intentional.values()].reduce((a, b) => a + b, 0)).toBe(60 * HOUR);
+  });
+
+  it("weekly streaks ignore rest days and never break on the running week", () => {
+    const s = new Map<string, number>([
+      ["2026-11-02", HOUR], // Mon, week 1
+      ["2026-11-14", 2 * HOUR], // Sat, week 2 (only one day that week: still counts)
+      ["2026-11-20", HOUR], // Fri, week 3
+    ]);
+    const st = weekStreak(s, t(2026, 11, 24, 10), 1); // Tuesday of week 4, nothing yet this week
+    expect(st.current).toBe(3);
+    expect(st.longest).toBe(3);
+    expect(st.firstReached.get(3)).toBe("2026-11-16");
+    s.delete("2026-11-14");
+    expect(weekStreak(s, t(2026, 11, 24, 10), 1).current).toBe(1);
+  });
+
+  it("balanced weeks need 3 active days and no day past the working day", () => {
+    const s = new Map<string, number>([
+      ["2026-11-02", 6 * HOUR], ["2026-11-03", 7 * HOUR], ["2026-11-04", 8 * HOUR], // balanced
+      ["2026-11-09", 6 * HOUR], ["2026-11-10", 11 * HOUR], ["2026-11-11", 6 * HOUR], // one long day
+    ]);
+    expect(balancedWeeks(s, 8 * HOUR, 1, t(2026, 11, 25))).toEqual(["2026-11-02"]);
+  });
+
+  it("derives achievements, caps intentional hours per day, and shows the next locked tier", () => {
+    const sessions: Session[] = [];
+    for (let i = 0; i < 12; i++) sessions.push(sess(t(2026, 9, 1 + i, 8), t(2026, 9, 1 + i, 20), "work", [], { mode: "stopwatch" })); // 12h days
+    const L = buildLedger(sessions, CATS, t(2026, 11, 1));
+    const all = deriveAchievements({ ledger: L, categories: CATS, tags: [], ladder: DEFAULT_LADDER, workdayHours: 8, weekStartsOn: 1, now: t(2026, 11, 1) });
+    const life = all.filter((a) => a.kind === "lifetime");
+    // 12 days × 8h cap = 96h: the 100h tier is not reached despite 144 raw hours
+    expect(life).toHaveLength(1);
+    expect(life[0].day).toBeNull();
+    expect(life[0].progress?.value).toBe(96);
+    const deep = all.filter((a) => a.kind === "deep");
+    expect(deep[0].day).toBe("2026-09-10"); // 10th session
+    expect(deep[1].day).toBeNull();
+    expect(all.find((a) => a.id === "milestone:category:work:100")?.day).toBe("2026-09-09");
+    expect(all.some((a) => a.kind === "balance" && a.day)).toBe(false); // 12h days are never "balanced"
+  });
+});
+
+describe("summaries", () => {
+  it("compares a week with the previous one and with the same week last year, and exports Markdown", () => {
+    const wk = periodOf("week", t(2026, 11, 25), 1);
+    expect(wk.start).toBe(t(2026, 11, 23));
+    expect(comparisonOf("week", wk, "previous", 1).start).toBe(t(2026, 11, 16));
+    expect(new Date(comparisonOf("week", wk, "last_year", 1).start).getDay()).toBe(1);
+    expect(isoWeek(t(2026, 11, 25))).toEqual({ year: 2026, week: 48 });
+    expect(isoWeek(t(2027, 1, 1))).toEqual({ year: 2026, week: 53 });
+    expect(periodFileName("week", wk)).toBe("2026-W48.md");
+    const sessions = [
+      sess(t(2026, 11, 23, 9), t(2026, 11, 23, 13), "work", ["houdini"]),
+      sess(t(2026, 11, 24, 9), t(2026, 11, 24, 10), "study"),
+      sess(t(2026, 11, 17, 9), t(2026, 11, 17, 11), "work"),
+    ];
+    const s = periodSummary({ kind: "week", range: wk, compareRange: comparisonOf("week", wk, "previous", 1), sessions, blocks: [], categories: CATS, tags: [{ id: "houdini", name: "Houdini" } as never], now: t(2026, 11, 30), weekStartsOn: 1 });
+    expect(s.recordedMs).toBe(5 * HOUR);
+    expect(s.prevRecordedMs).toBe(2 * HOUR);
+    expect(s.categories.map((r) => [r.name, r.ms / HOUR, r.prevMs / HOUR])).toEqual([["work", 4, 2], ["study", 1, 0]]);
+    const md = summaryMarkdown(s, { compareLabel: "last week" });
+    expect(md).toMatch(/^---\ntype: interval-week\nperiod: 2026-W48\nstart: 2026-11-23\nend: 2026-11-29\ntotal_hours: 5\n/);
+    expect(md).toContain("hours_work: 4");
+    expect(md).toContain("generator: interval");
+    expect(md).toContain("| work | 4h | +2h |");
+    expect(md).toContain("| study | 1h | new |");
+    expect(md).toContain("- #Houdini 4h");
+  });
+});
+
+describe("shortcuts", () => {
+  const ev = (key: string, m: Partial<{ ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) => ({ key, ctrlKey: false, altKey: false, shiftKey: false, ...m });
+  it("normalises key events and applies overrides", () => {
+    expect(comboOf(ev("T"))).toBe("t");
+    expect(comboOf(ev("e", { ctrlKey: true }))).toBe("ctrl+e");
+    expect(comboOf(ev("F2", { shiftKey: true }))).toBe("shift+f2");
+    expect(comboOf(ev("?", { shiftKey: true }))).toBe("?");
+    expect(comboOf(ev("Shift", { shiftKey: true }))).toBe("");
+    const b = bindings({ today: "g", focusMode: "" });
+    expect(b.get("g")).toBe("today");
+    expect(b.has("t")).toBe(false);
+    expect([...b.values()]).not.toContain("focusMode");
+    expect(prettyKey("ctrl+shift+f2")).toBe("Ctrl Shift F2");
   });
 });

@@ -85,6 +85,17 @@ export interface Budget {
   createdAt: number;
 }
 
+/** A personal achievement confirmed by hand, optionally tied to a skill (tag) or area (category). */
+export interface PersonalAchievement {
+  id: Id;
+  title: string;
+  note: string | null;
+  targetType: "category" | "tag" | null;
+  targetId: Id | null;
+  achievedOn: string; // YYYY-MM-DD
+  createdAt: number;
+}
+
 export interface TemplateBlock {
   id: Id;
   startMinute: number; // local minute of day
@@ -136,6 +147,14 @@ export interface Settings {
   // Backups (Phase 2)
   backupDir: string | null; // null = <data folder>/backups
   backupKeepDays: number;
+  // Progression (Phase 3)
+  milestoneHours: number[]; // lifetime-hours ladder for skills and areas
+  progressionHidden: string[]; // "tag:<id>" / "category:<id>" left out of Progress and achievements
+  // Obsidian (Phase 3)
+  obsidianDir: string | null; // folder inside the vault; Interval writes Days/ and Weeks/ under it
+  obsidianAuto: boolean; // write yesterday's log and last week's summary automatically
+  // Personalization (Phase 3)
+  shortcuts: Record<string, string>; // action id -> key (overrides of the defaults)
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -165,6 +184,11 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewPrompts: true,
   backupDir: null,
   backupKeepDays: 30,
+  milestoneHours: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+  progressionHidden: [],
+  obsidianDir: null,
+  obsidianAuto: false,
+  shortcuts: {},
 };
 
 /** A half-open interval [start, end) in epoch ms. */
