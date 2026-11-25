@@ -41,11 +41,20 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
+      # Pasted secrets often carry a trailing newline, which breaks the key password.
+      - name: Normalise signing secrets
+        shell: bash
+        env:
+          RAW_PW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pw="$(printf '%s' "$RAW_PW" | tr -d '\r\n')"
+          echo "::add-mask::$pw"
+          echo "SIGNING_PW=$pw" >> "$GITHUB_ENV"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.SIGNING_PW }}
         with:
           tagName: v__VERSION__
           releaseName: Interval v__VERSION__
