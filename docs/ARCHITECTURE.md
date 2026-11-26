@@ -306,6 +306,26 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - Own colour (`color`, null = the category's) lives on presets and is **copied** onto blocks, template blocks and recurrence rules, like every other preset field. `lookOf(item, category)` in `ui/bits.tsx` resolves colour and icon for drawing. Recorded sessions keep the category colour (actual time is always by category).
 - Quick notes from the floating timer are a `note` timer command; the main window saves a `journal_entries` row with `source = 'capture'`, linked to the running session. `buildDayLog` takes the day's journal entries and lists capture notes by time (`dayLogItems`).
 
+## v0.9 notes (template overlay, mini timer scale)
+
+- **Template = overlay only.** `library.daySuggestions` calls `suggestionsForDay` with no blocks and no dismissals, so every
+  template block of the weekday shows, whatever is planned; confirm / apply / dismiss / restore are gone from the UI and
+  `library.ts`. `template_dismissals` and `blocks.template_block_id` stay in the schema (old data is harmless). In
+  `Timeline`, ghosts render first in the Plan lane with a fixed full-width layout, outside `layoutColumns`, with
+  `pointer-events: none`, so real blocks sit on top.
+- **Template blocks have no category** (`category_id = ''`, column kept NOT NULL). Migration v9 copies each block's category
+  colour, icon and name (where the block had none of its own) and then clears `category_id`. Drawing in the template creates a
+  block with the next `TEMPLATE_COLORS` colour and opens rename; dropped presets and pasted blocks bring their look and name.
+- **Day log notes**: `buildDayLog` lists every journal entry of the day (capture and end-of-round annotations), with kind and
+  source; the Markdown line is `- HH:MM *Kind:* text`.
+- **Mini timer at 125%**: `html[data-window="mini"] #root { zoom: 1.25 }` scales everything; `shell.rs › mini_size` is
+  360×173 (compact 235×50) and the expanded edit view is at least 360 wide. The edit view's fit measures
+  `getBoundingClientRect()` (visual pixels, zoom included).
+- **Right panel width** is `settings.rightPanelWidth` → `--panel-w` on `.shell` (each panel in `.panel-area`), set by
+  `PanelResizer` in `RightPanel.tsx`.
+- "Today's time" and "Planned vs actual" are `ui/DayTimeSummary.tsx`, rendered at the bottom of the left sidebar for the
+  focused day.
+
 ## Roadmap notes
 
 Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.

@@ -21,7 +21,6 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "focusSkip", label: "Focus timer: skip to the next phase", key: "n" },
   { id: "focusExtend", label: "Focus timer: add 5 minutes", key: "e" },
   { id: "miniTimer", label: "Show or hide the floating timer", key: "o" },
-  { id: "confirm", label: "Confirm selected block as done", key: "c" },
   { id: "rename", label: "Rename selected block", key: "f2" },
   { id: "split", label: "Split selected block", key: "x" },
   { id: "sidebar", label: "Toggle sidebar", key: "[" },

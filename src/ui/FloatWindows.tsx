@@ -67,6 +67,7 @@ export function MiniTimerApp() {
   const now = useClock();
   const drag = useWindowDrag();
   const [editing, setEditing] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // Fit the window to the edit view while it's open.
   useEffect(() => {
@@ -115,6 +116,13 @@ export function MiniTimerApp() {
       <Square size={10} fill="currentColor" />
     </button>
   );
+  const onBreak = isBreakStatus(snap.status);
+  // v0.9: Abandon on the main face too, behind the same confirm step as the edit view.
+  const abandon = !idle && snap.status !== "completed" && (
+    <button className="mt-btn mt-bin" onClick={() => setAbandoning(true)} aria-label="Abandon" title={onBreak ? "Abandon this break (not recorded)" : "Abandon this session: nothing is recorded"}>
+      <Trash2 size={11} />
+    </button>
+  );
 
   return (
     <div
@@ -157,6 +165,7 @@ export function MiniTimerApp() {
             <span className="mt-actions">
               {toggle}
               {stop}
+              {abandon}
             </span>
           </div>
           <div className="mt-bar" aria-hidden>
@@ -170,6 +179,11 @@ export function MiniTimerApp() {
             {snap.next && <span className="mt-next">Next · {snap.next}</span>}
           </div>
           <MiniNote send={send} />
+          {abandoning && !editing && (
+            <div className="mt-abandon-layer">
+              <AbandonConfirm onBreak={onBreak} onDone={() => setAbandoning(false)} onConfirm={() => send("abandon")} />
+            </div>
+          )}
           {editing && <MiniEdit snap={snap} send={send} onDone={() => setEditing(false)} />}
           <button className={`mt-toggle ${editing ? "open" : ""}`} onClick={() => setEditing(!editing)} aria-label={editing ? "Hide name, category and length" : "Name, category, length"} aria-expanded={editing} title={editing ? "Hide" : "Name, category, length"}>
             <ChevronDown size={13} />
@@ -258,16 +272,7 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
             aria-label="Session name"
           />
           </div>
-          <div className="mt-cats" role="listbox" aria-label="Category">
-            {snap.ui.categories.map((c) => (
-              <button key={c.id} role="option" aria-selected={c.id === cat} className={`mt-cat ${c.id === cat ? "on" : ""}`} style={{ ["--cc" as string]: c.color }} onClick={() => pickCat(c.id)} title={c.name}>
-                <span className={`mt-cat-dot ${c.icon ? "has" : ""}`} aria-hidden>
-                  <Icon name={c.icon} size={12} />
-                </span>
-                <span className="mt-cat-name">{c.name}</span>
-              </button>
-            ))}
-          </div>
+          <MiniCategoryDropdown categories={snap.ui.categories} value={cat} onPick={pickCat} />
         </>
       )}
       {showLength && (
@@ -308,6 +313,63 @@ function MiniEdit({ snap, send, onDone }: { snap: TimerBroadcast; send: (cmd: Ti
         </button>
       </div>
       {confirm && <AbandonConfirm onBreak={onBreak} onDone={() => setConfirm(false)} onConfirm={() => (send("abandon"), onDone())} />}
+    </div>
+  );
+}
+
+type MiniCat = TimerBroadcast["ui"]["categories"][number];
+
+function CatChip({ c }: { c: MiniCat }) {
+  return (
+    <>
+      <span className={`mt-cat-dot ${c.icon ? "has" : ""}`} style={{ ["--cc" as string]: c.color }} aria-hidden>
+        <Icon name={c.icon} size={12} />
+      </span>
+      <span className="mt-cat-name">{c.name}</span>
+    </>
+  );
+}
+
+/** v0.9: the category as a dropdown (an in-window list, not a native select, which closes by itself in
+ *  the desktop webview while the timer redraws). The list opens in the flow, so the window grows to fit. */
+function MiniCategoryDropdown({ categories, value, onPick }: { categories: MiniCat[]; value: string | null; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const cur = categories.find((c) => c.id === value);
+  useEffect(() => {
+    if (!open) return;
+    setHi(Math.max(0, categories.findIndex((c) => c.id === value)));
+    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const choose = (id: string) => (onPick(id), setOpen(false));
+  return (
+    <div
+      className={`mt-dd ${open ? "open" : ""}`}
+      ref={ref}
+      onKeyDown={(e) => {
+        if (!open) return;
+        if (e.key === "ArrowDown") (e.preventDefault(), setHi((h) => Math.min(categories.length - 1, h + 1)));
+        else if (e.key === "ArrowUp") (e.preventDefault(), setHi((h) => Math.max(0, h - 1)));
+        else if (e.key === "Enter" && categories[hi]) (e.preventDefault(), choose(categories[hi].id));
+        else if (e.key === "Escape") (e.stopPropagation(), setOpen(false));
+      }}
+    >
+      <button type="button" className="mt-dd-btn" onClick={() => setOpen(!open)} aria-haspopup="listbox" aria-expanded={open} aria-label={`Category: ${cur?.name ?? "none"}`} style={cur ? { ["--cc" as string]: cur.color } : undefined}>
+        {cur ? <CatChip c={cur} /> : <span className="mt-cat-name muted">Category…</span>}
+        <ChevronDown size={12} className="mt-dd-chev" />
+      </button>
+      {open && (
+        <div className="mt-dd-list" role="listbox" aria-label="Category">
+          {categories.map((c, i) => (
+            <button key={c.id} type="button" role="option" aria-selected={c.id === value} className={`mt-cat ${c.id === value ? "on" : ""} ${i === hi ? "hi" : ""}`} style={{ ["--cc" as string]: c.color }} onMouseEnter={() => setHi(i)} onClick={() => choose(c.id)} title={c.name}>
+              <CatChip c={c} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

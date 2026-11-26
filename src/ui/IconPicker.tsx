@@ -99,12 +99,12 @@ export function IconButton({ icon, color, label, onPick, size = "md", className 
 }
 
 /** Own colour, or the category's (null). Used by presets, blocks and template blocks. */
-export function ColorField({ value, fallback, onChange, palette }: { value: string | null | undefined; fallback: string; onChange: (color: string | null) => void; palette: string[] }) {
+export function ColorField({ value, fallback, onChange, palette, noAuto }: { value: string | null | undefined; fallback: string; onChange: (color: string | null) => void; palette: string[]; noAuto?: boolean }) {
   return (
     <div className="color-field" role="radiogroup" aria-label="Colour">
-      <button type="button" role="radio" aria-checked={!value} className={`color-auto ${!value ? "on" : ""}`} onClick={() => onChange(null)} title="Use the category colour">
+      {!noAuto && <button type="button" role="radio" aria-checked={!value} className={`color-auto ${!value ? "on" : ""}`} onClick={() => onChange(null)} title="Use the category colour">
         <span className="swatch sm" style={{ background: fallback }} /> Category
-      </button>
+      </button>}
       {palette.slice(0, 12).map((c) => (
         <button type="button" key={c} role="radio" aria-checked={value === c} className={`swatch sm ${value === c ? "on" : ""}`} style={{ background: c }} onClick={() => onChange(c)} aria-label={`Colour ${c}`} />
       ))}

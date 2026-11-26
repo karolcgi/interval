@@ -285,6 +285,19 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `ALTER TABLE recurrence_rules ADD COLUMN color TEXT`,
     ],
   },
+  {
+    version: 9,
+    name: "template blocks without categories",
+    up: [
+      // The weekly template is a visual guide only (v0.9): no categories. Each block keeps the look it had
+      // (its own icon/colour, else its category's), then the category is cleared (column stays NOT NULL).
+      `UPDATE week_template_blocks SET
+         color = COALESCE(color, (SELECT c.color FROM categories c WHERE c.id = week_template_blocks.category_id)),
+         icon = COALESCE(icon, (SELECT c.icon FROM categories c WHERE c.id = week_template_blocks.category_id)),
+         title = COALESCE(NULLIF(TRIM(title), ''), (SELECT c.name FROM categories c WHERE c.id = week_template_blocks.category_id)),
+         category_id = ''`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

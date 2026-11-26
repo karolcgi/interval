@@ -4402,18 +4402,15 @@ html[data-window] #root {
   opacity: 0.32;
   background: color-mix(in oklab, var(--c) 14%, transparent);
   border: 1px dashed color-mix(in oklab, var(--c) 80%, transparent);
-  cursor: pointer;
+  /* v0.9: a pure overlay behind the plan; clicks and drags go to the lane beneath */
+  pointer-events: none;
   z-index: 0;
   filter: saturate(0.7);
 }
 .block.ghost-suggestion::before {
   display: none;
 }
-.block.ghost-suggestion:hover {
-  opacity: 0.62;
-  filter: none;
-  z-index: 2;
-}
+
 .block.ghost-suggestion .block-title {
   font-weight: 500;
 }
@@ -4849,3 +4846,39 @@ html[data-window] #root {
 .kind-menu li { display: flex; align-items: center; gap: 7px; }
 .kind-btn { color: var(--text-3); }
 .kind-btn:hover { color: var(--text); }
+.swatch-menu { display: grid; grid-template-columns: repeat(6, 16px); gap: 6px; padding: 8px; }
+
+/* ============================================================ v0.9 mini timer */
+/* 25% larger, fonts and all: the whole mini window is zoomed; Rust's mini_size grew by the same factor. */
+html[data-window="mini"] #root { zoom: 1.25; }
+.mt-bin { color: var(--text-3); }
+.mt-bin:hover:not(:disabled) { color: var(--danger); }
+.mt-abandon-layer { position: absolute; inset: 0; z-index: 5; display: grid; align-content: center; padding: 8px 10px; background: color-mix(in oklab, var(--overlay) 97%, transparent); border-radius: inherit; }
+.mt-abandon-layer .abandon-confirm { margin: 0; }
+.mt-dd { position: relative; display: grid; gap: 3px; }
+.mt-dd-btn { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: var(--fs-sm); text-align: left; min-width: 0; }
+.mt-dd-btn:hover, .mt-dd.open .mt-dd-btn { border-color: color-mix(in srgb, var(--cc, var(--focus)) 60%, var(--border)); }
+.mt-dd-btn .mt-cat-name { flex: 1; }
+.mt-dd-chev { flex: none; color: var(--text-3); transition: transform var(--dur) var(--ease); }
+.mt-dd.open .mt-dd-chev { transform: rotate(180deg); }
+.mt-dd-list { display: grid; gap: 1px; max-height: 132px; overflow-y: auto; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.mt-dd-list .mt-cat.hi { background: var(--hover); color: var(--text); }
+
+/* v0.9: Today's time + Planned vs actual at the bottom of the left sidebar */
+.side-time { display: grid; gap: var(--sp-2); padding: 0 var(--sp-1); margin-bottom: var(--sp-2); }
+.side-time .card.hero { margin: 0; }
+.side-time .panel-sec { padding: 0 var(--sp-1); margin: 0; border: 0; }
+.side-time .dist-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.link-eyebrow { padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+.link-eyebrow:hover { color: var(--text); }
+
+/* v0.9: the right panel resizes like the left sidebar */
+.panel-area { position: relative; }
+.panel-resizer { position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; z-index: 20; cursor: col-resize; touch-action: none; }
+.panel-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: transparent; transition: background var(--dur) var(--ease); }
+.panel-resizer:hover::after, .panel-resizer:focus-visible::after, .panel-resizer.dragging::after { background: var(--focus); }
+.shell:has(.panel-resizer.dragging) { cursor: col-resize; user-select: none; }
+/* v0.9: one-line label on short sessions in the Actual lane */
+.session-body.one-line { display: flex; align-items: baseline; gap: 0; padding: 1px 6px; white-space: nowrap; overflow: hidden; }
+.session-body.one-line .session-name { flex: 0 1 auto; min-width: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--c-text); }
+.session-body.one-line .session-dur { flex: none; font-weight: 500; color: var(--text-2); white-space: pre; }

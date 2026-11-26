@@ -13,27 +13,19 @@ import { computeStats } from "../domain/stats";
 import { addDays, startOfDay } from "../domain/time";
 import { fmtDuration } from "../domain/format";
 import { CatDot } from "./bits";
-import * as L from "../state/library";
+import { DayTimeSummary } from "./DayTimeSummary";
 
 export function Sidebar() {
   const view = useApp((s) => s.view);
   const categories = useApp((s) => s.categories);
   const today = useApp((s) => s.today);
   const update = useApp((s) => s.update);
-  const weekTemplate = useApp((s) => s.weekTemplate);
-  const dismissed = useApp((s) => s.dismissed);
   const now = useNow(30_000);
 
   const totals = useMemo(() => {
     const d = startOfDay(now);
     return computeStats({ sessions: today.sessions, blocks: today.blocks, categories, range: { start: d, end: addDays(d, 1) }, now });
   }, [today, categories, now]);
-  // Suggested by the template and not yet planned (never part of the planned total).
-  const suggestedMs = useMemo(() => {
-    void weekTemplate;
-    void dismissed;
-    return L.suggestedTodayMs(today.blocks);
-  }, [weekTemplate, dismissed, today.blocks]);
 
   const active = categories.filter((c) => !c.archivedAt && !c.parentId);
   const recordedById = new Map(totals.byCategory.map((x) => [x.categoryId, x.recordedMs]));
@@ -74,12 +66,7 @@ export function Sidebar() {
             <div className="update-sub">Your data is kept.</div>
           </div>
         )}
-        <div className="today-chip" onClick={A.goToday} role="button" tabIndex={0} aria-label="Today's totals">
-          <span className="eyebrow">Today</span>
-          <span className="today-chip-val">{fmtDuration(totals.recordedMs)}</span>
-          <span className="today-chip-sub">of {fmtDuration(totals.plannedMs)} planned</span>
-          {suggestedMs > 0 && <span className="today-chip-sub tpl-sub">+ {fmtDuration(suggestedMs, { compact: true })} suggested by template</span>}
-        </div>
+        <DayTimeSummary />
         <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => A.setView("settings")}>
           <Settings2 size={15} />
           <span>Settings</span>

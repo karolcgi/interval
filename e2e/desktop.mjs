@@ -148,9 +148,9 @@ try {
      inv("db_select", { sql: "SELECT (SELECT COUNT(*) FROM activity_presets) AS p, (SELECT COUNT(*) FROM week_template_blocks) AS w, (SELECT MAX(version) FROM schema_migrations) AS v, (SELECT COUNT(*) FROM pragma_table_info('blocks') WHERE name IN ('icon','color')) AS bc", params: [] })
        .then((r) => done(r), (e) => done({ err: String(e) }));`,
   );
-  if (!Array.isArray(rows) || Number(rows[0]?.v) !== 8 || Number(rows[0]?.bc) !== 2) throw new Error(`schema should be v8 with block icon/colour: ${JSON.stringify(rows)}`);
+  if (!Array.isArray(rows) || Number(rows[0]?.v) !== 9 || Number(rows[0]?.bc) !== 2) throw new Error(`schema should be v9 with block icon/colour: ${JSON.stringify(rows)}`);
   await click(".topbar .tab", "Today");
-  ok("Top tabs work in the real app; database migrated to v8 (presets, template, icons and colours)");
+  ok("Top tabs work in the real app; database migrated to v9 (presets, template without categories, icons and colours)");
 
   const errs = await js("return window.__errors || []");
   if (errs.length) throw new Error(errs.join("\n"));

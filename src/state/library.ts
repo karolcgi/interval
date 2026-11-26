@@ -8,17 +8,8 @@ import { store } from "./store";
 import * as A from "./actions";
 import * as repo from "../db/repo";
 import type { ActivityPreset, Block, Id, Interval, WeekTemplateBlock } from "../domain/types";
-import { addDays, atMinute, dayKey, MINUTE, startOfDay } from "../domain/time";
-import {
-  blockFieldsFrom,
-  conflictsWith,
-  fromRefInterval,
-  refDay,
-  suggestionOf,
-  suggestionsForDay,
-  weekdayOf,
-  type Suggestion,
-} from "../domain/weekTemplate";
+import { atMinute, MINUTE, startOfDay } from "../domain/time";
+import { fromRefInterval, refDay, suggestionsForDay, weekdayOf } from "../domain/weekTemplate";
 
 function db() {
   const d = store.get().db;
@@ -167,12 +158,24 @@ export async function createTemplateBlock(iv: Interval, categoryId: Id, extra: P
   return t;
 }
 
+/** Template blocks have no category (v0.9): they are a visual guide only. A freshly drawn one gets the
+ *  next colour from the palette and opens its name for typing. */
+export const TEMPLATE_COLORS = ["#8298d7", "#8bbca0", "#ba9ad0", "#77b3bf", "#d49a72", "#c6ae76", "#d98c9a", "#a3b86c", "#7fa7e0", "#c79bb8", "#6fb3a3", "#e6a5a0"];
+export async function drawTemplateBlock(iv: Interval) {
+  const n = store.get().weekTemplate.length;
+  const t = await createTemplateBlock(iv, "", { color: TEMPLATE_COLORS[n % TEMPLATE_COLORS.length] });
+  store.set({ tplRenaming: t.id });
+  return t;
+}
+
 /** Drop a preset into the template at a weekday and minute. */
 export async function dropPresetOnTemplate(presetId: Id, start: number) {
   const p = store.get().presets.find((x) => x.id === presetId);
   if (!p) return;
-  const { categoryId, ...extra } = presetFields(p);
-  return createTemplateBlock({ start, end: start + p.durationMinutes * MINUTE }, categoryId, extra);
+  // Keeps the preset's look (its own, else its category's); the template itself has no categories.
+  const cat = store.get().categories.find((c) => c.id === p.categoryId);
+  const { categoryId: _c, ...extra } = presetFields(p);
+  return createTemplateBlock({ start, end: start + p.durationMinutes * MINUTE }, "", { ...extra, icon: p.icon ?? cat?.icon ?? null, color: p.color ?? cat?.color ?? null });
 }
 
 export async function updateTemplateBlock(id: Id, patch: Partial<WeekTemplateBlock>, label = "Edit template block") {
@@ -221,13 +224,15 @@ export async function copyTemplateDay(from: number, to: number[], replace: boole
 }
 
 /** Import a Phase 2 day template into a weekday (keeps the day template). */
+const catOf = (id: Id) => store.get().categories.find((c) => c.id === id);
+
 export async function importDayTemplate(templateId: Id, weekday: number) {
   const t = store.get().templates.find((x) => x.id === templateId);
   if (!t) return;
   const changes = t.blocks.map((b) => ({
     type: "tblock" as const,
     before: null,
-    after: newTemplateBlock({ weekday, startMinute: b.startMinute, durationMinutes: Math.min(b.durationMinutes, 1440 - b.startMinute), categoryId: b.categoryId, title: b.title, tagIds: [...b.tagIds] }),
+    after: newTemplateBlock({ weekday, startMinute: b.startMinute, durationMinutes: Math.min(b.durationMinutes, 1440 - b.startMinute), categoryId: "", title: b.title || catOf(b.categoryId)?.name || null, tagIds: [...b.tagIds], icon: catOf(b.categoryId)?.icon ?? null, color: catOf(b.categoryId)?.color ?? null }),
   }));
   await A.commit(`Import “${t.name}”`, changes);
 }
@@ -239,7 +244,9 @@ export async function pasteIntoTemplate(weekday: number) {
   const changes = clip.map((b) => {
     const iv = { start: b.startAt, end: b.endAt };
     const f = fromRefInterval(iv);
-    return { type: "tblock" as const, before: null, after: newTemplateBlock({ ...f, weekday, categoryId: b.categoryId, title: b.title, notes: b.notes, tagIds: [...b.tagIds], presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }) };
+    const cat = store.get().categories.find((c) => c.id === b.categoryId);
+    const look = { icon: b.icon ?? cat?.icon ?? null, color: b.color ?? cat?.color ?? null };
+    return { type: "tblock" as const, before: null, after: newTemplateBlock({ ...f, weekday, categoryId: "", title: b.title || cat?.name || null, notes: b.notes, tagIds: [...b.tagIds], presetId: b.presetId ?? null, ...look }) };
   });
   await A.commit(changes.length === 1 ? "Paste into template" : `Paste ${changes.length} blocks into template`, changes);
 }
@@ -260,62 +267,13 @@ export function copyTemplateBlocks(ids: Id[]) {
 
 // --------------------------------------------------------------- suggestions
 
+// v0.9: the template is a pure overlay. Every template block of the weekday shows, whatever is planned on
+// top of it; there is no confirm, dismiss or apply any more (old dismissals and links are ignored).
+const NO_DISMISSALS: ReadonlySet<string> = new Set();
+
 export function daySuggestions(day: number) {
   const s = store.get();
-  return suggestionsForDay(day, s.weekTemplate, s.blocks, s.dismissed, { now: Date.now(), includePast: s.settings.templateOnPast });
-}
-
-/** Turn one ghost into a real planned block on its date. Never starts a timer. */
-export async function confirmSuggestion(templateBlockId: Id, day: number) {
-  const tb = findTpl(templateBlockId);
-  if (!tb) return;
-  const s = suggestionOf(tb, day);
-  const b = A.newBlock({ start: s.startAt, end: s.endAt }, tb.categoryId, blockFieldsFrom(s));
-  await A.commit("Confirm suggestion", [{ type: "block", before: null, after: b }]);
-  store.set({ selection: { kind: "block", id: b.id } });
-  return b;
-}
-
-/** Conflicts for "apply this day's template": suggestions that overlap a real planned block. */
-export function applyPlan(day: number): { clean: Suggestion[]; conflicts: Array<{ s: Suggestion; with: Block[] }> } {
-  const { visible } = daySuggestions(day);
-  const dayBlocks = store.get().blocks.filter((b) => b.startAt < addDays(startOfDay(day), 1) && b.endAt > startOfDay(day));
-  const clean: Suggestion[] = [];
-  const conflicts: Array<{ s: Suggestion; with: Block[] }> = [];
-  for (const s of visible) {
-    const w = conflictsWith(s, dayBlocks);
-    if (w.length) conflicts.push({ s, with: w });
-    else clean.push(s);
-  }
-  return { clean, conflicts };
-}
-
-/**
- * Confirm every unconfirmed suggestion of a day. Conflicting ones are added only when listed in
- * `alsoConflicting` (the user chose to keep both). Idempotent: confirmed and dismissed ones are skipped.
- */
-export async function applyDayTemplate(day: number, alsoConflicting: Id[] = []) {
-  const { clean, conflicts } = applyPlan(day);
-  const pick = [...clean, ...conflicts.filter((c) => alsoConflicting.includes(c.s.tb.id)).map((c) => c.s)];
-  if (!pick.length) return A.toast("Nothing to apply: every suggestion is already planned or dismissed");
-  const changes = pick.map((s) => ({ type: "block" as const, before: null, after: A.newBlock({ start: s.startAt, end: s.endAt }, s.tb.categoryId, blockFieldsFrom(s)) }));
-  await A.commit(`Apply template (${changes.length} ${changes.length === 1 ? "block" : "blocks"})`, changes);
-  const skipped = conflicts.length - conflicts.filter((c) => alsoConflicting.includes(c.s.tb.id)).length;
-  A.toast(`Planned ${changes.length} ${changes.length === 1 ? "block" : "blocks"} from the template${skipped ? `, skipped ${skipped}` : ""}`, true);
-}
-
-export async function dismissSuggestion(templateBlockId: Id, day: number) {
-  await db().batch([repo.dismissStmt({ day: dayKey(day), templateBlockId, createdAt: Date.now() })]);
-  await A.refresh();
-}
-
-export async function restoreSuggestions(day: number, ids?: Id[]) {
-  const { dismissed } = daySuggestions(day);
-  const pick = dismissed.filter((s) => !ids || ids.includes(s.tb.id));
-  if (!pick.length) return;
-  await db().batch(pick.map((s) => repo.undismissStmt(dayKey(day), s.tb.id)));
-  await A.refresh();
-  A.toast(pick.length === 1 ? "Suggestion restored" : `${pick.length} suggestions restored`);
+  return suggestionsForDay(day, s.weekTemplate, [], NO_DISMISSALS, { now: Date.now(), includePast: s.settings.templateOnPast });
 }
 
 /** Context menu › Edit original in Template. */
@@ -354,10 +312,10 @@ export async function answerFocusOffer(choice: "preset" | "plain" | "cancel") {
   await A.startTimer({ blockId: offer.blockId, mode: "pomodoro" });
 }
 
-/** Minutes the template suggests for a day that aren't planned, confirmed or dismissed (in ms). */
-export function suggestedMs(day: number, dayBlocks: Block[]): number {
+/** Minutes the template lays out for a day (in ms). It is a guide, never planned or recorded time. */
+export function suggestedMs(day: number, _dayBlocks?: Block[]): number {
   const s = store.get();
-  return suggestionsForDay(day, s.weekTemplate, dayBlocks, s.dismissed, { now: Date.now(), includePast: true }).visible.reduce((n, g) => n + (g.endAt - g.startAt), 0);
+  return suggestionsForDay(day, s.weekTemplate, [], NO_DISMISSALS, { now: Date.now(), includePast: true }).visible.reduce((n, g) => n + (g.endAt - g.startAt), 0);
 }
 
 export function suggestedTodayMs(todayBlocks: Block[]): number {
