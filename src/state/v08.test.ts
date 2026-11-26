@@ -46,7 +46,7 @@ describe("Lucide icons replace emoji", () => {
       params: [id, id, icon, emoji],
     });
     await db.batch([ins("work", "briefcase", "💼"), ins("dogs", null, "🐕"), ins("plain", "user", null), ins("odd", null, "🦄"), ins("gym", null, "🏋️")]);
-    expect(await migrate(db)).toEqual({ from: 7, to: 8 });
+    expect(await migrate(db)).toEqual({ from: 7, to: 9 });
     const icon = Object.fromEntries((await repo.listCategories(db)).map((c) => [c.id, c.icon]));
     expect(icon).toEqual({ work: "briefcase", dogs: "dog", plain: null, odd: null, gym: "dumbbell" });
   });
@@ -73,7 +73,9 @@ describe("preset icon and colour", () => {
     const next = store.get().blocks.find((x) => x.recurrenceId);
     expect([next?.icon, next?.color]).toEqual(["atom", "#d98c9a"]);
     const tb = await L.dropPresetOnTemplate(store.get().presets[0].id, t(2024, 1, 3, 9));
-    expect([tb?.icon, tb?.color]).toEqual([null, null]); // the preset no longer has its own look
+    // the preset no longer has its own look; template blocks have no category (v0.9), so they copy the category's
+    const studying = store.get().categories.find((c) => c.id === catId("Studying"))!;
+    expect([tb?.categoryId, tb?.icon, tb?.color]).toEqual(["", studying.icon, studying.color]);
   });
 });
 

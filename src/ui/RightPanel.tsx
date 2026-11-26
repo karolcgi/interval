@@ -2,19 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { DiaryNotes } from "./DiaryNotes";
 import { ColorField, IconButton } from "./IconPicker";
 import { PALETTE } from "./CategoriesView";
-import { Ban, Check, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
-import { useApp, useNow } from "../state/store";
+import { Ban, Combine, CopyPlus, ExternalLink, Link2, Play, RotateCcw, Scissors, Square, Trash2, X } from "lucide-react";
+import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as L from "../state/library";
 import * as repo from "../db/repo";
 import type { Block, Session } from "../domain/types";
-import { computeStats } from "../domain/stats";
-import { addDays, atMinute, isSameDay, startOfDay } from "../domain/time";
+import { atMinute, isSameDay, startOfDay } from "../domain/time";
 import { fmt, fmtClock, fmtDuration, fmtTime } from "../domain/format";
-import { catVars, CategorySelect, lookOf, Segmented } from "./bits";
+import { catVars, CategorySelect, lookOf } from "./bits";
 import { TagInput } from "./TagInput";
 import { RepeatSection } from "./RepeatSection";
-import { StartMenuButton } from "./StartMenu";
 import { openRitual, suggestedRitual } from "./DailyRitual";
 import { budgetProgress } from "../domain/budgets";
 import { targetColor, targetName, useBudgetData } from "./BudgetsView";
@@ -36,6 +34,7 @@ export function RightPanel({ overview = true }: { overview?: boolean }) {
   if (!overview && !block && !session) return null;
   return (
     <div className="panel-area">
+      <PanelResizer />
       {(block || session) && (
         <aside className="panel inspector-panel" aria-label="Properties">
           {block ? <BlockInspector key={block.id} block={block} /> : session ? <SessionInspector key={session.id} session={session} /> : null}
@@ -50,30 +49,76 @@ export function RightPanel({ overview = true }: { overview?: boolean }) {
   );
 }
 
+const PANEL_MIN = 220;
+const PANEL_MAX = 520;
+
+/** Drag the right panel's left edge to resize it (like the left sidebar); double-click resets. With the
+ *  properties panel open the area holds two panels, and both take the new width. */
+function PanelResizer() {
+  const [drag, setDrag] = useState(false);
+  const start = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const area = e.currentTarget.parentElement as HTMLElement;
+    const shell = area.closest(".shell") as HTMLElement | null;
+    const right = area.getBoundingClientRect().right;
+    const n = Math.max(1, area.querySelectorAll(":scope > .panel").length);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag(true);
+    let w = 0;
+    const move = (ev: PointerEvent) => {
+      w = Math.round(Math.max(PANEL_MIN, Math.min(PANEL_MAX, (right - ev.clientX) / n)));
+      shell?.style.setProperty("--panel-w", `${w}px`);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDrag(false);
+      if (w) void A.updateSettings({ rightPanelWidth: w }).catch(A.reportError);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const nudge = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const cur = store.get().settings.rightPanelWidth ?? (document.querySelector(".panel-area > .panel") as HTMLElement | null)?.offsetWidth ?? 280;
+    const w = Math.max(PANEL_MIN, Math.min(PANEL_MAX, cur + (e.key === "ArrowLeft" ? 16 : -16)));
+    void A.updateSettings({ rightPanelWidth: w }).catch(A.reportError);
+  };
+  return (
+    <div
+      className={`panel-resizer ${drag ? "dragging" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize details panel"
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={start}
+      onDoubleClick={() => {
+        document.querySelector<HTMLElement>(".shell")?.style.removeProperty("--panel-w");
+        void A.updateSettings({ rightPanelWidth: null }).catch(A.reportError);
+      }}
+      onKeyDown={nudge}
+    />
+  );
+}
+
 // ------------------------------------------------------------- overview
 
 function DayOverview() {
   const date = useApp((s) => s.date);
   const blocks = useApp((s) => s.blocks);
-  const sessions = useApp((s) => s.sessions);
   const categories = useApp((s) => s.categories);
   const note = useApp((s) => s.dailyNote);
   const running = useApp((s) => s.running);
   const now = useNow(30_000);
   const isToday = isSameDay(date, now);
 
-  const st = useMemo(
-    () => computeStats({ sessions, blocks, categories, range: { start: date, end: addDays(date, 1) }, now }),
-    [sessions, blocks, categories, date, now],
-  );
   const catById = new Map(categories.map((c) => [c.id, c]));
-  const rows = st.byCategory.filter((r) => r.recordedMs > 0 || r.plannedMs > 0);
-  const maxRow = Math.max(1, ...rows.map((r) => Math.max(r.recordedMs, r.plannedMs)));
   const upNext = isToday
     ? blocks.filter((b) => b.status === "planned" && b.endAt > now && isSameDay(b.startAt, date) && !catById.get(b.categoryId)?.isBreak).sort((a, b) => a.startAt - b.startAt)[0]
     : undefined;
-  const unreviewed = blocks.filter((b) => b.status === "planned" && b.endAt <= now && isSameDay(b.startAt, date)).length;
-  const pct = st.plannedMs > 0 ? Math.min(100, (st.recordedMs / st.plannedMs) * 100) : 0;
   const prompts = useApp((s) => s.settings.reviewPrompts);
   const ritual = prompts ? suggestedRitual(date, now, note, blocks) : null;
 
@@ -85,51 +130,6 @@ function DayOverview() {
           <span>{ritual === "plan" ? "Plan the day in two minutes" : "Close the day: confirm, reflect, prepare tomorrow"}</span>
         </button>
       )}
-      <div className="card hero">
-        <div className="eyebrow">{isToday ? "Today’s time" : fmt.full(date)}</div>
-        <div className="hero-val">{fmtDuration(st.recordedMs)}</div>
-        <div className="hero-sub">
-          recorded of {fmtDuration(st.plannedMs)} planned
-          {st.breakMs > 0 && <> · {fmtDuration(st.breakMs, { compact: true })} breaks</>}
-        </div>
-        <div className="progress">
-          <span style={{ width: `${pct}%` }} />
-        </div>
-        <ThreeLayers date={date} recordedMs={st.recordedMs} plannedMs={st.plannedMs} />
-      </div>
-
-      <section className="panel-sec">
-        <div className="sec-head">
-          <h3>Planned vs actual</h3>
-        </div>
-        {rows.length === 0 && <p className="muted small">Nothing planned or recorded yet. Drag on the timeline to plan a block.</p>}
-        <ul className="dist">
-          {rows.map((r) => {
-            const c = catById.get(r.categoryId);
-            return (
-              <li key={r.categoryId} style={catVars(c?.color ?? "#888")}>
-                <div className="dist-top">
-                  <span className="dist-name">{c?.name ?? "Unknown"}</span>
-                  <span className="dist-val">
-                    {fmtDuration(r.recordedMs, { compact: true })}
-                    <span className="muted"> / {fmtDuration(r.plannedMs, { compact: true })}</span>
-                  </span>
-                </div>
-                <div className="dist-bar">
-                  <span className="dist-plan" style={{ width: `${(r.plannedMs / maxRow) * 100}%` }} />
-                  <span className="dist-act" style={{ width: `${(r.recordedMs / maxRow) * 100}%` }} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        {unreviewed > 0 && (
-          <p className="notice small">
-            {unreviewed} past block{unreviewed > 1 ? "s" : ""} not yet confirmed. Hover a block and press ✓, or right-click it.
-          </p>
-        )}
-      </section>
-
       <PanelBudgets />
 
       {upNext && !running && (
@@ -149,37 +149,6 @@ function DayOverview() {
 
       <PanelDayLog />
     </div>
-  );
-}
-
-/** Template, Plan and Actual side by side. Suggestions are only shown, never added to the plan total. */
-function ThreeLayers({ date, recordedMs, plannedMs }: { date: number; recordedMs: number; plannedMs: number }) {
-  const blocks = useApp((s) => s.blocks);
-  const tpl = useApp((s) => s.weekTemplate);
-  const dismissed = useApp((s) => s.dismissed);
-  const onPast = useApp((s) => s.settings.templateOnPast);
-  const suggested = useMemo(() => {
-    void tpl;
-    void dismissed;
-    void onPast;
-    return L.daySuggestions(date).visible.reduce((n, g) => n + (g.endAt - g.startAt), 0);
-  }, [date, blocks, tpl, dismissed, onPast]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!tpl.length) return null;
-  return (
-    <dl className="three-layers" aria-label="Template, plan and actual">
-      <div>
-        <dt>Suggested</dt>
-        <dd className="tpl-val">{fmtDuration(suggested, { compact: true })}</dd>
-      </div>
-      <div>
-        <dt>Planned</dt>
-        <dd>{fmtDuration(plannedMs, { compact: true })}</dd>
-      </div>
-      <div>
-        <dt>Actual</dt>
-        <dd>{fmtDuration(recordedMs, { compact: true })}</dd>
-      </div>
-    </dl>
   );
 }
 
@@ -350,42 +319,17 @@ function BlockInspector({ block }: { block: Block }) {
         </div>
       </div>
 
-      <div className="insp-row">
-        <Segmented
-          size="sm"
-          value={block.status === "in_progress" ? "planned" : block.status}
-          ariaLabel="Status"
-          onChange={(v) => (v === "completed" ? void A.completeBlockManually(block.id) : void A.setBlockStatus(block.id, v))}
-          options={[
-            { value: "planned", label: block.status === "in_progress" ? "In progress" : "Planned" },
-            { value: "completed", label: "Done" },
-            { value: "skipped", label: "Skipped" },
-          ]}
-        />
-      </div>
-
       <label className="insp-label">Repeat</label>
       <RepeatSection block={block} />
 
-      <div className="insp-actions">
-        {isRunningHere ? (
+      {/* v0.9: no Start / Confirm here. Blocks are the plan; the timer starts from the Focus timer panel. */}
+      {isRunningHere && (
+        <div className="insp-actions">
           <button className="btn btn-cat wide" style={catVars(look.color)} onClick={() => void A.stopTimer()}>
             <Square size={12} fill="currentColor" /> Stop · {fmtClock(now - running!.startAt)}
           </button>
-        ) : (
-          <div className="split-start" style={catVars(look.color)}>
-            <button className="btn btn-cat wide" onClick={() => void L.startFromBlock(block.id).catch(A.reportError)}>
-              <Play size={12} fill="currentColor" /> Start session
-            </button>
-            <StartMenuButton target={{ blockId: block.id }} className="btn-cat" />
-          </div>
-        )}
-        {block.status === "planned" && block.startAt < now && (
-          <button className="btn btn-outline" onClick={() => void A.completeBlockManually(block.id)} title="Record the planned time as actual, without a timer">
-            <Check size={13} /> Confirm
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="insp-stat">
         <div>

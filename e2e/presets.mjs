@@ -173,8 +173,14 @@ try {
   await nav(page, "Today");
 
   // Focus offer from a preset block
+  // v0.9: blocks have no Start button or menu item; the S key still starts the selected block
   await realBlocks().filter({ hasText: "Houdini studying" }).first().click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Start session" }).click();
+  if (await page.getByRole("menuitem", { name: /Start session|Confirm as done/ }).count()) await fail("block menu must not offer Start or Confirm (v0.9)");
+  await page.mouse.click(5, 300); // close the menu
+  await page.locator(".popover-modal").waitFor({ state: "detached" });
+  if (await realBlocks().first().locator(".block-actions").count()) await fail("blocks must not show hover Start/Confirm buttons (v0.9)");
+  await realBlocks().filter({ hasText: "Houdini studying" }).first().click();
+  await page.keyboard.press("s");
   await expectText(page.locator(".focus-offer"), /50 \/ 10/, "offers the preset's focus timer");
   await page.locator(".focus-offer").getByRole("button", { name: "Cancel" }).click();
   if (await page.locator(".ftp-clock").filter({ hasText: /^0?0:0[1-9]/ }).count()) await fail("timer must not start on cancel");
@@ -185,7 +191,8 @@ try {
   await page.getByRole("heading", { name: "Weekly template" }).waitFor();
   await dropPreset("Houdini studying", 2, 15 * 60);
   await expectText(page.locator(".template-mode .tl-col").nth(2).locator(".block"), /Houdini studying/, "template block on Wednesday");
-  await expectText(page.locator(".tpl-panel .dist"), /Studying/, "weekly totals per category");
+  await expectText(page.locator(".tpl-panel .dist"), /Houdini studying/, "weekly totals per block name (no categories in the template)");
+  if (await page.locator(".tpl-editor").getByText("Category", { exact: true }).count()) await fail("template block editor must not show a category (v0.9)");
   await expectText(page.locator(".tpl-dayhead").nth(2), /1h 30m/, "Wednesday total");
   // and the second preset on Wednesday 09:00 plus Friday by copy
   await dropPreset("Client production", 2, 9 * 60);
@@ -213,98 +220,58 @@ try {
   const border = await g.evaluate((el) => getComputedStyle(el).borderTopStyle);
   if (border !== "dashed") await fail(`ghost border should be dashed, got ${border}`);
   if (await page.locator(".lane-actual .ghost-suggestion").count()) await fail("ghosts must never appear in Actual");
-  await expectText(page.locator(".three-layers"), /Suggested\s*3h 30m/, "three layers show what the template suggests");
+  await expectText(page.locator(".sidebar .three-layers"), /Suggested\s*3h 30m/, "three layers (now in the left sidebar) show what the template lays out");
   await shot("4-future-wednesday");
   // past days show none by default
   await goToDay("2026-11-18");
   if (await ghosts().count()) await fail("no suggestions on past days by default");
   // overlay toggle
   await goToDay("2026-12-02");
-  await page.getByRole("button", { name: "Show template suggestions" }).click();
+  await page.getByRole("button", { name: "Show template overlay" }).click();
   await expectGone(ghosts(), "toggle hides suggestions");
-  await page.getByRole("button", { name: "Show template suggestions" }).click();
+  await page.getByRole("button", { name: "Show template overlay" }).click();
   await ghosts().first().waitFor();
   ok("Future Wednesday: ghost at ~30% opacity, dashed, Plan lane only; none on past days; toolbar toggle works");
 
-  // 7. Confirm with a double-click
-  await g.dblclick();
-  await expectText(realBlocks(), /Houdini studying/, "confirmed block");
-  if (await ghosts().filter({ hasText: "Houdini" }).count()) await fail("ghost should hide once confirmed");
-  if (await page.locator(".focus-offer").count()) await fail("confirming must not start a timer");
-  ok("Double-click confirms it into a real planned block; the ghost hides for that date");
+  // 7. v0.9: ghosts are a pure overlay: no double-click confirm, no menu, no Apply/Restore
+  const pe = await g.evaluate((el) => getComputedStyle(el).pointerEvents);
+  if (pe !== "none") await fail(`ghosts should ignore the pointer, got pointer-events ${pe}`);
+  if (await page.locator(".apply-tpl").count()) await fail("no Apply template button (v0.9)");
+  if (await page.getByRole("button", { name: /Restore \d/ }).count()) await fail("no Restore button (v0.9)");
+  const gb = await g.boundingBox();
+  await page.mouse.dblclick(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await page.keyboard.press("Escape");
+  if (await realBlocks().filter({ hasText: "Houdini" }).count()) await fail("double-clicking a ghost must not confirm it");
+  ok("Ghosts ignore the pointer: no confirm, no menu, no Apply or Restore");
 
-  // 8. Move the confirmed block; the template is unchanged
-  const blk = realBlocks().filter({ hasText: "Houdini studying" }).first();
-  const bb = await blk.boundingBox();
-  await page.mouse.move(bb.x + bb.width / 2, bb.y + 20);
-  await page.mouse.down();
-  await page.mouse.move(bb.x + bb.width / 2, bb.y + 20 + HH, { steps: 6 });
-  await page.mouse.move(bb.x + bb.width / 2, bb.y + 20 + 2 * HH, { steps: 6 });
-  await page.mouse.up();
-  await expectText(realBlocks().filter({ hasText: "Houdini" }), /17:00/, "block moved to 17:00");
-  const movedLabel = await realBlocks().filter({ hasText: "Houdini" }).first().getAttribute("aria-label");
-  if (!/17:00 – 18:30/.test(movedLabel)) await fail(`moved block should be 17:00–18:30, got ${movedLabel}`);
-  if (await ghosts().filter({ hasText: "Houdini" }).count()) await fail("moving a confirmed block must not bring its ghost back");
-  await nav(page, "Template");
-  const tl = await page.locator(".template-mode .tl-col").nth(2).locator(".block", { hasText: "Houdini" }).getAttribute("aria-label");
-  if (!/15:00 – 16:30/.test(tl)) await fail(`template should still be 15:00–16:30, got ${tl}`);
-  // Edit original in Template from the confirmed block's menu
-  ok("Moved the confirmed block to 17:00; the template block stays at Wednesday 15:00");
-
-  // 9. Apply a whole day without duplicates (and with a conflict)
-  await goToDay("2026-12-09");
-  await expectText(page.locator(".apply-tpl"), /Apply template \(2\)/, "apply button counts suggestions");
-  await page.locator(".apply-tpl").click();
-  await expectGone(page.locator(".apply-tpl"), "nothing left to apply");
-  if ((await realBlocks().count()) !== 2) await fail(`expected 2 planned blocks, got ${await realBlocks().count()}`);
-  if (await ghosts().count()) await fail("no ghosts after applying");
-  await page.keyboard.press("Control+z");
-  await expectText(page.locator(".apply-tpl"), /\(2\)/, "undo brings the suggestions back");
-  await page.keyboard.press("Control+y");
-  await expectGone(page.locator(".apply-tpl"), "redo applies again");
-  if ((await realBlocks().count()) !== 2) await fail("redo must not duplicate");
-  // conflict: plan something at 15:30 on Dec 16 first
+  // 8. A real block planned over a ghost sits on top of it, full width, and the ghost stays
   await goToDay("2026-12-16");
   await dragCreate(0, 15 * 60 + 30, 16 * 60 + 30);
   await page.keyboard.press("Enter"); // no name
   await page.keyboard.press("6"); // Administration
-  await expectText(realBlocks(), /Administration/, "conflicting block planned");
-  await page.locator(".apply-tpl").click();
-  await expectText(page.locator(".popover.conflicts"), /overlaps Administration/, "conflict listed");
-  await page.locator(".popover.conflicts").getByRole("button", { name: "Apply, skip overlaps" }).click();
-  await expectText(realBlocks(), /Client production/, "the clean suggestion was applied");
-  if (await realBlocks().filter({ hasText: "Houdini" }).count()) await fail("the conflicting suggestion should be skipped");
-  await expectText(ghosts(), /Houdini/, "the skipped suggestion stays a ghost");
-  await shot("5-apply-conflict");
-  ok("Apply template: 2 blocks, no duplicates on undo/redo; a conflict can be skipped (stays a suggestion)");
-
-  // 10. Dismiss one date only, then restore
-  await goToDay("2026-12-23");
-  await ghosts().filter({ hasText: "Houdini" }).first().click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Dismiss for this day" }).click();
-  await expectGone(ghosts().filter({ hasText: "Houdini" }), "dismissed ghost hides");
-  await expectText(page.locator(".cal-tools"), /Restore 1/, "restore offered");
-  await goToDay("2026-12-30");
-  await expectText(ghosts(), /Houdini/, "other weeks unaffected");
-  await goToDay("2026-12-23");
-  await page.getByRole("button", { name: /Restore 1/ }).click();
-  await expectText(ghosts(), /Houdini/, "restored");
-  // Edit original in Template from a ghost
-  await ghosts().filter({ hasText: "Houdini" }).first().click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Edit original in Template" }).click();
-  await page.getByRole("heading", { name: "Weekly template" }).waitFor();
-  await expectText(page.locator(".tpl-editor"), /every Wednesday/, "original opens in the Template editor");
-  ok("Dismissed for one date (other weeks keep it), restored; “Edit original in Template” opens the source block");
+  await expectText(realBlocks(), /Administration/, "block planned over the ghost");
+  await page.keyboard.press("Escape");
+  await expectText(ghosts(), /Houdini/, "the ghost stays under it");
+  const [rb, gh, lane] = await Promise.all([
+    realBlocks().filter({ hasText: "Administration" }).first().boundingBox(),
+    ghosts().filter({ hasText: "Houdini" }).first().boundingBox(),
+    page.locator(".lane-plan").first().boundingBox(),
+  ]);
+  if (Math.abs(rb.width - gh.width) > 2 || rb.width < lane.width * 0.8) await fail(`real block should be full width over the ghost (block ${rb.width}, ghost ${gh.width}, lane ${lane.width})`);
+  const z = await Promise.all([realBlocks().filter({ hasText: "Administration" }).first(), ghosts().filter({ hasText: "Houdini" }).first()].map((l) => l.evaluate((el) => Number(getComputedStyle(el).zIndex) || 0)));
+  if (!(z[0] > z[1])) await fail(`real block should stack above the ghost (z ${z})`);
+  await shot("5-block-over-ghost");
+  ok("A block planned over a ghost sits on top of it, full width; the ghost stays visible underneath");
 
   // 11. Suggestions never inflate statistics
   await goToDay("2026-12-30");
-  await expectText(page.locator(".three-layers"), /Planned\s*0m/, "planned excludes suggestions");
-  await expectText(page.locator(".three-layers"), /Actual\s*0m/, "actual excludes suggestions");
-  await expectText(page.locator(".hero-sub"), /of 0m planned/, "hero planned total excludes suggestions");
+  await expectText(page.locator(".sidebar .three-layers"), /Planned\s*0m/, "planned excludes suggestions");
+  await expectText(page.locator(".sidebar .three-layers"), /Actual\s*0m/, "actual excludes suggestions");
+  await expectText(page.locator(".sidebar .hero-sub"), /of 0m planned/, "hero planned total excludes suggestions");
   await nav(page, "Calendar");
   await page.locator(".tl-dayhead").nth(2).filter({ hasText: /\/ 0m/ }).waitFor({ timeout: 3000 }).catch(() => fail("week header planned stays 0m"));
   await shot("6-week-ghosts");
-  ok("Unconfirmed suggestions add nothing to planned or actual totals (day panel, week header)");
+  ok("The template overlay adds nothing to planned or actual totals (sidebar card, week header)");
 
   // Save as preset from a block, and sidebar collapse state
   await goToDay("2026-12-16");
@@ -324,8 +291,8 @@ try {
   if (!(await page.locator(".sidebar .side-section.collapsed", { hasText: "Activities" }).count())) await fail("collapsed section remembered");
   await nav(page, "Template");
   if ((await page.locator(".template-mode .block").count()) !== 4) await fail("template has 4 blocks after restart");
-  await goToDay("2026-12-02");
-  await expectText(realBlocks(), /Houdini studying/, "confirmed block survives");
+  await goToDay("2026-12-16");
+  await expectText(realBlocks(), /Administration/, "block planned over the ghost survives");
   await goToDay("2026-11-25");
   await expectText(realBlocks(), /Houdini studying/, "today's block survives");
   ok("Restart keeps presets, the template, calendar blocks and the collapsed sidebar section");

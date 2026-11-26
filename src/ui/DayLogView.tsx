@@ -1,7 +1,9 @@
 // Day log: an automatic diary of what actually happened, built from recorded sessions.
 // Browse any past day, copy it as Markdown or save it as YYYY-MM-DD.md (Obsidian's daily-note name).
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, ClipboardCopy, Download, StickyNote } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardCopy, Download } from "lucide-react";
+import { Icon } from "./icons";
+import { KIND_ICON, KIND_LABEL } from "../domain/entries";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as repo from "../db/repo";
@@ -183,9 +185,9 @@ export function DayLogTimeline({ log, timeFormat, compact = false }: { log: DayL
         {dayLogItems(log).map((item) => {
           if (item.kind === "note")
             return (
-              <li key={item.note.id} className="dl-note" title="Quick note from the floating timer">
+              <li key={item.note.id} className="dl-note" title={item.note.source === "capture" ? "Quick note from the floating timer" : `${KIND_LABEL[item.note.kind]} from your diary`}>
                 <span className="dl-time">{fmtTime(item.note.at, timeFormat)}</span>
-                <StickyNote size={11} className="dl-note-icon" aria-hidden />
+                <span className="dl-note-icon"><Icon name={KIND_ICON[item.note.kind]} size={11} /></span>
                 <span className="dl-title">{item.note.text}</span>
                 <span />
               </li>

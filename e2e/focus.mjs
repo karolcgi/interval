@@ -112,7 +112,7 @@ try {
   // 3. Floating mini timer shares the state and sends commands back
   const mini = await ctx.newPage();
   watch(mini, "mini");
-  await mini.setViewportSize({ width: 288, height: 138 }); // v0.8: matches mini_size("standard") in shell.rs
+  await mini.setViewportSize({ width: 360, height: 173 }); // v0.9: matches mini_size("standard") in shell.rs (25% larger)
   await mini.goto(`${base}?window=mini`);
   await mini.locator(".float-root.mini .mt-clock").waitFor();
   await ctx.clock.runFor(1000);
@@ -151,7 +151,7 @@ try {
   await page.getByRole("tab", { name: "Floating timer & tray" }).click();
   await page.getByRole("radiogroup", { name: "Floating timer layout" }).getByRole("radio", { name: "Compact" }).click();
   await mini.locator(".float-root.mini.compact").waitFor();
-  await mini.setViewportSize({ width: 188, height: 40 });
+  await mini.setViewportSize({ width: 235, height: 50 });
   await shot("focus-mini-compact", mini);
   await shot("focus-settings");
   await page.getByRole("radiogroup", { name: "Floating timer layout" }).getByRole("radio", { name: "Standard" }).click();
@@ -253,11 +253,16 @@ try {
   ok("Abandon → confirm discards the running session; history still shows only the earlier session");
 
   // 11. Mini timer edit view (v0.8: opened by the always-visible arrow at the bottom): name, category, length, start, keep on top
-  await mini.setViewportSize({ width: 288, height: 460 });
+  await mini.setViewportSize({ width: 360, height: 575 });
   if (!(await mini.locator(".mt-toggle").isVisible())) await fail("the down arrow should always be visible");
   await mini.getByRole("button", { name: "Name, category, length" }).click();
   await mini.getByRole("textbox", { name: "Session name" }).fill("Lookdev pass");
+  // v0.9: category is a dropdown with icon and colour
+  if (await mini.getByRole("listbox", { name: "Category" }).count()) await fail("category list should stay closed until the dropdown opens");
+  await mini.getByRole("button", { name: /^Category:/ }).click();
   await mini.getByRole("listbox", { name: "Category" }).getByRole("option", { name: "Studying" }).click();
+  if (await mini.getByRole("listbox", { name: "Category" }).count()) await fail("category dropdown should close after picking");
+  await expectText(mini.locator(".mt-dd-btn"), /Studying/, "dropdown shows the picked category");
   await mini.locator(".mt-lengths").getByRole("button", { name: /^15/ }).click();
   await shot("focus-mini-edit", mini);
   await mini.locator(".mt-edit").getByRole("button", { name: /^Start/ }).click();
@@ -272,11 +277,16 @@ try {
   const pinned = await pin.getAttribute("aria-pressed");
   await pin.click();
   await mini.waitForFunction((was) => document.querySelector(".mt-top [aria-pressed]")?.getAttribute("aria-pressed") !== was, pinned);
-  if (!(await mini.locator(".mt-edit").count())) await mini.getByRole("button", { name: "Name, category, length" }).click();
-  await mini.getByRole("button", { name: "Abandon" }).click();
+  // v0.9: Abandon sits on the main face next to pause and stop, behind the same confirm step
+  if (await mini.locator(".mt-edit").count()) await mini.getByRole("button", { name: "Hide name, category and length" }).click();
+  await mini.locator(".mt-actions").getByRole("button", { name: "Abandon" }).click();
+  await mini.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Keep" }).click();
+  await page.locator(".focus-panel.is-running").waitFor();
+  await mini.locator(".mt-actions").getByRole("button", { name: "Abandon" }).click();
+  await shot("focus-mini-abandon", mini);
   await mini.getByRole("alertdialog", { name: "Abandon session" }).getByRole("button", { name: "Discard" }).click();
   await page.locator(".focus-panel.is-running").waitFor({ state: "detached" });
-  ok("Mini timer: bottom arrow opens name, category, 15 min length and Start; green live pill while running; pin toggles on-top; abandon works there too");
+  ok("Mini timer: bottom arrow opens name, category, 15 min length and Start; green live pill while running; pin toggles on-top; category dropdown; abandon from the main face (Keep, then Discard)");
 
   // 11b. Quick note line on the mini timer → Day log, in the accent colour, at the time it was sent
   const note = mini.getByRole("textbox", { name: "Quick note for the day log" });

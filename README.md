@@ -114,7 +114,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 | Right-click a block › Save as preset | ✅ |
 | Weekly template: one generic Mon–Sun week on the same timeline; drag to create, drop presets, move, resize, Alt-drag copy, copy to another weekday, copy a whole day, edit category/tags/notes, delete, undo/redo; totals per day and per category | ✅ |
 | Suggestions (ghosts) in Today and Calendar: ~30% opacity, dashed, template icon, Plan lane only; toolbar toggle; none on past days unless turned on in Settings › Calendar | ✅ |
-| Double-click (or right-click) a ghost to plan it; Apply template for the day (no duplicates; overlaps can be skipped or kept); dismiss for one date and restore; Edit original in Template | ✅ |
+| Ghosts are a pure overlay since v0.9: not clickable, no confirm, apply, dismiss or restore; real blocks sit on top of them, full width | ✅ |
 | Three layers stay separate: template hours never count as planned or recorded; the day panel shows Suggested / Planned / Actual | ✅ |
 | Starting a block made from a preset with a focus-timer preset offers that timer; nothing starts by itself | ✅ |
 | Import a saved day template into a weekday (Template › Import day) | ✅ |
@@ -125,6 +125,17 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 - **Presets have their own icon and colour** (default: the category's). Blocks dropped from a preset keep both, and so do duplicates, splits, repeats and template copies. Any block or template block can also get its own icon and colour in the details panel.
 - **Sidebar presets are coloured blocks**, so they read as things you drag onto the calendar.
 - **Floating timer**: a soft green pill behind the time while it runs; the name / category / length view opens from the always-visible arrow at the bottom; a **note line** adds a timestamped note to the Day log (accent colour, also in the Markdown and Obsidian daily note).
+
+## v0.9 status (template overlay, simpler blocks, bigger mini timer)
+
+- **End-of-round notes reach the Day log.** What you type in the "what did you get done" prompt after a pomodoro now shows in the Day log (and its Markdown) with its note type, like quick notes from the floating timer.
+- **The weekly template has no categories.** Each template block has its own name, icon and colour (existing blocks keep their category's look and name, migration v9). Weekly totals are per block name.
+- **Template ghosts are just an overlay** in Today and Calendar: not clickable, no confirm, Apply, dismiss or restore. Blocks you plan over them sit on top, full width.
+- **No Start / Done buttons on blocks.** Plan blocks no longer show hover ▶ / ✓, and the details panel lost Start session, Confirm and the Planned / Done / Skipped switch. Start the timer from the Focus timer panel (or S with a block selected).
+- **Floating timer:** 25% larger (fonts and all); an Abandon bin next to pause and stop, with the same confirm step; the category is a dropdown with icon and colour.
+- **Right panel resizes** by dragging its left edge (remembered; double-click resets), like the left sidebar.
+- **Today's time and Planned vs actual moved to the bottom of the left sidebar.** The right panel's freed room is kept for a future task inbox (Obsidian / Google Calendar).
+- **Short sessions show their title** in the Actual lane on one line, e.g. "Setup · 25m".
 
 ## Install (normal use)
 

@@ -1,7 +1,8 @@
 // Day log: what actually happened on a day, as a plain Markdown timeline built from recorded sessions.
 // Pure; the UI renders the same entries and copies/saves the Markdown (e.g. into an Obsidian vault).
 
-import type { Block, Category, Id, JournalEntry, Session, Tag } from "./types";
+import type { Block, Category, EntryKind, Id, JournalEntry, Session, Tag } from "./types";
+import { KIND_LABEL } from "./entries";
 import { addDays, dayKey } from "./time";
 import { computeStats } from "./stats";
 import { fmtDuration, fmtTime } from "./format";
@@ -20,11 +21,14 @@ export interface DayLogEntry {
   sessionIds: Id[];
 }
 
-/** A quick note typed into the floating timer (v0.8), shown in the log at the time it was sent. */
+/** A diary note shown in the log at its time: floating-timer quick notes (v0.8) and the
+ *  "what did you get done?" notes from the end of a focus round or the Diary panel (v0.9). */
 export interface DayLogNote {
   id: Id;
   at: number;
   text: string;
+  kind: EntryKind;
+  source: JournalEntry["source"];
 }
 
 export interface DayLog {
@@ -88,9 +92,9 @@ export function buildDayLog(day: number, sessions: Session[], blocks: Block[], c
     .map((r) => ({ categoryId: r.categoryId, name: cat.get(r.categoryId)?.name ?? "Uncategorised", color: cat.get(r.categoryId)?.color ?? "#888888", ms: r.recordedMs }))
     .sort((a, b) => b.ms - a.ms);
   const notes = journal
-    .filter((j) => j.source === "capture" && j.at >= day && j.at < dayEnd)
+    .filter((j) => j.at >= day && j.at < dayEnd)
     .sort((a, b) => a.at - b.at || a.createdAt - b.createdAt)
-    .map((j) => ({ id: j.id, at: j.at, text: j.text }));
+    .map((j) => ({ id: j.id, at: j.at, text: j.text, kind: j.kind, source: j.source }));
   return { day, entries, notes, totalMs, breakMs, byCategory };
 }
 
@@ -145,7 +149,7 @@ export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; 
   }
   for (const item of dayLogItems(log)) {
     if (item.kind === "note") {
-      lines.push(`- ${fmtTime(item.note.at, tf)} *Note:* ${mdText(item.note.text)}`);
+      lines.push(`- ${fmtTime(item.note.at, tf)} *${KIND_LABEL[item.note.kind]}:* ${mdText(item.note.text)}`);
       continue;
     }
     const e = item.entry;

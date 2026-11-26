@@ -93,7 +93,7 @@ describe("activity presets and weekly template", () => {
     expect(store.get().presets.some((x) => x.id === a.id)).toBe(false);
   });
 
-  it("template: suggestions, confirm, move, apply without duplicates, dismiss; stats untouched (acceptance 5–11)", async () => {
+  it("template: an overlay that never counts, sits under real blocks and ignores old dismissals", async () => {
     const db = await testDb();
     await boot(db);
     const p = await L.savePreset(L.newPreset({ name: "Houdini studying", categoryId: catId("Studying"), durationMinutes: 90 }));
@@ -107,44 +107,19 @@ describe("activity presets and weekly template", () => {
     const before = computeStats({ sessions: store.get().sessions, blocks: store.get().blocks, categories: store.get().categories, range: { start: WED, end: addDays(WED, 1) }, now: t(2026, 11, 25, 8) });
     expect([before.plannedMs, before.recordedMs]).toEqual([0, 0]);
 
-    // 7: confirm one
+    // v0.9: pure overlay. A real block planned on top never hides the ghost, and both look independent.
+    await A.createBlock({ start: t(2026, 12, 2, 15, 30), end: t(2026, 12, 2, 16, 30) }, catId("Administration"));
+    expect(L.daySuggestions(WED).visible).toHaveLength(2);
+    expect(L.suggestedMs(WED)).toBe(210 * MINUTE);
     const tbH = store.get().weekTemplate.find((x) => x.startMinute === 900)!;
-    const confirmed = (await L.confirmSuggestion(tbH.id, WED))!;
-    expect(confirmed.templateBlockId).toBe(tbH.id);
-    expect(L.daySuggestions(WED).visible.map((s) => s.tb.id)).not.toContain(tbH.id);
-    // 8: move it, template unchanged and suggestion still hidden
-    await A.updateBlock(confirmed.id, { startAt: t(2026, 12, 2, 17), endAt: t(2026, 12, 2, 18, 30) }, "Move block");
-    expect(store.get().weekTemplate.find((x) => x.id === tbH.id)!.startMinute).toBe(900);
-    expect(L.daySuggestions(WED).visible).toHaveLength(1);
-    // 9: apply twice, no duplicates
-    await L.applyDayTemplate(WED);
-    await L.applyDayTemplate(WED);
-    expect(store.get().blocks.filter((b) => b.templateBlockId)).toHaveLength(2);
-    // template edits affect future suggestions, not confirmed blocks
-    await L.updateTemplateBlock(tbH.id, { title: "Renamed" });
-    expect(store.get().blocks.find((b) => b.id === confirmed.id)!.title).toBe("Houdini studying");
-
-    // conflicts: skip by default, keep when asked
-    const WED2 = addDays(WED, 7);
-    await goTo(WED2);
-    await A.createBlock({ start: t(2026, 12, 9, 15, 30), end: t(2026, 12, 9, 16, 30) }, catId("Administration"));
-    expect(L.applyPlan(WED2).conflicts).toHaveLength(1);
-    await L.applyDayTemplate(WED2);
-    expect(store.get().blocks.filter((b) => b.templateBlockId)).toHaveLength(1);
-    await L.applyDayTemplate(WED2, [tbH.id]);
-    expect(store.get().blocks.filter((b) => b.templateBlockId)).toHaveLength(2);
-
-    // 10: dismiss one date only, restore
-    const WED3 = addDays(WED, 14);
-    await goTo(WED3);
-    await L.dismissSuggestion(tbH.id, WED3);
-    expect(L.daySuggestions(WED3).visible).toHaveLength(1);
-    expect(L.daySuggestions(WED3).dismissed).toHaveLength(1);
-    await goTo(addDays(WED3, 7));
-    expect(L.daySuggestions(addDays(WED3, 7)).visible).toHaveLength(2);
-    await goTo(WED3);
-    await L.restoreSuggestions(WED3);
-    expect(L.daySuggestions(WED3).visible).toHaveLength(2);
+    // template blocks carry no category: the dropped preset's name and look come along instead
+    expect(tbH.categoryId).toBe("");
+    expect(tbH.title).toBe("Houdini studying");
+    expect(tbH.color).toBe(store.get().categories.find((c) => c.id === catId("Studying"))!.color);
+    // old dismissals no longer hide anything
+    await db.batch([repo.dismissStmt({ day: dayKey(WED), templateBlockId: tbH.id, createdAt: 0 })]);
+    await A.refresh();
+    expect(L.daySuggestions(WED).visible).toHaveLength(2);
 
     // undo / redo of template edits
     await L.deleteTemplateBlocks([tbH.id]);
@@ -169,7 +144,7 @@ describe("activity presets and weekly template", () => {
     expect(store.get().weekTemplate.filter((x) => x.weekday === 5).map((x) => x.startMinute)).toEqual([600]);
     await L.savePreset(L.newPreset({ name: "P", categoryId: catId("Studying") }));
     await goTo(t(2026, 11, 30));
-    await L.dismissSuggestion(store.get().weekTemplate.find((x) => x.weekday === 0)!.id, t(2026, 11, 30));
+    await db.batch([repo.dismissStmt({ day: dayKey(t(2026, 11, 30)), templateBlockId: store.get().weekTemplate.find((x) => x.weekday === 0)!.id, createdAt: 0 })]);
 
     const bundle = await exportJson(db);
     const db2 = await testDb();

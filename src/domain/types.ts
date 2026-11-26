@@ -211,6 +211,8 @@ export interface Settings {
   sidebarOpen: boolean;
   /** Left sidebar width in px; null = the theme's default. */
   sidebarWidth: number | null;
+  /** v0.9: width of the right panel (each of its panels), px; null = default. */
+  rightPanelWidth: number | null;
   defaultBlockMinutes: number;
   timeFormat: "24h" | "12h";
   // Focus (Phase 2)
@@ -288,6 +290,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rightPanelOpen: true,
   sidebarOpen: true,
   sidebarWidth: null,
+  rightPanelWidth: null,
   defaultBlockMinutes: 60,
   timeFormat: "24h",
   pomodoroFocus: 25,

@@ -331,9 +331,9 @@ fn corner<R: Runtime>(app: &AppHandle<R>, size: PhysicalSize<u32>, stack: u32) -
 
 fn mini_size(layout: &str) -> (f64, f64) {
     if layout == "compact" {
-        (188.0, 40.0)
+        (235.0, 50.0) // v0.9: 25% larger (the webview is zoomed 1.25 in CSS)
     } else {
-        (288.0, 138.0) // v0.8: + quick note line and the bottom arrow
+        (360.0, 173.0) // v0.9: 288x138 scaled by 1.25
     }
 }
 
@@ -668,7 +668,7 @@ pub async fn mini_expand<R: Runtime>(app: AppHandle<R>, expanded: bool, height: 
     let Some(w) = app.get_webview_window("mini") else { return Ok(()) };
     let layout = app.state::<Shell>().prefs.lock().unwrap().mini_layout.clone();
     let (bw, bh) = mini_size(&layout);
-    let (lw, lh) = if expanded { (bw.max(288.0), height.unwrap_or(330.0)) } else { (bw, bh) };
+    let (lw, lh) = if expanded { (bw.max(360.0), height.unwrap_or(412.0)) } else { (bw, bh) };
     let scale = w.scale_factor().unwrap_or(1.0);
     let before = w.outer_size().map_err(|e| e.to_string())?;
     let pos = w.outer_position().map_err(|e| e.to_string())?;

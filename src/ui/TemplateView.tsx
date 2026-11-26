@@ -1,13 +1,13 @@
 // Template tab: one generic Monday–Sunday week that repeats indefinitely. Reuses the calendar
-// timeline (mode "template"). Nothing here is planned or recorded time: its blocks appear as
-// suggestions in Today and Calendar until you confirm them.
+// timeline (mode "template"). Nothing here is planned or recorded time: since v0.9 its blocks are a
+// non-interactive overlay behind Today and Calendar, and they carry their own name, icon and colour.
 import { useMemo, useRef, useState } from "react";
 import { Copy, Import, Minus, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import * as L from "../state/library";
 import { Timeline } from "./Timeline";
-import { CatDot, CategorySelect, catVars, lookOf, usePlacement, useOutside } from "./bits";
+import { CatDot, catVars, lookOf, usePlacement, useOutside } from "./bits";
 import { ColorField, IconButton } from "./IconPicker";
 import { PALETTE } from "./CategoriesView";
 import { TagInput } from "./TagInput";
@@ -38,7 +38,7 @@ export function TemplateView() {
           <div className="cal-title-wrap">
             <div className="eyebrow cal-eyebrow">Repeats every week</div>
             <h1 className="cal-title static">Weekly template</h1>
-            <p className="tpl-sub muted small">Your ideal week, not a calendar. Its blocks show as dimmed suggestions in Today and Calendar, and count as nothing until you confirm them.</p>
+            <p className="tpl-sub muted small">Your ideal week, not a calendar. Its blocks show as a dimmed overlay behind Today and Calendar, as a guide. They never count as planned or recorded time.</p>
           </div>
           <div className="cal-tools">
             <div className="zoom" title="Zoom (Ctrl + scroll)">
@@ -85,12 +85,21 @@ export function TemplateView() {
 
 function TemplatePanel() {
   const weekTemplate = useApp((s) => s.weekTemplate);
-  const categories = useApp((s) => s.categories);
   const selId = useApp((s) => s.tplSelection);
   const sel = weekTemplate.find((t) => t.id === selId);
   const totals = useMemo(() => templateTotals(weekTemplate), [weekTemplate]);
-  const catRows = [...totals.byCategory.entries()].sort((a, b) => b[1] - a[1]);
-  const max = Math.max(1, ...catRows.map((r) => r[1]));
+  // v0.9: no categories in the template, so the week is summed by block name (with that block's look).
+  const catRows = useMemo(() => {
+    const m = new Map<string, { name: string; color: string; icon: string | null; min: number }>();
+    for (const t of weekTemplate) {
+      const name = t.title?.trim() || "Untitled";
+      const r = m.get(name.toLowerCase()) ?? { name, color: t.color ?? "#888", icon: t.icon ?? null, min: 0 };
+      r.min += t.durationMinutes;
+      m.set(name.toLowerCase(), r);
+    }
+    return [...m.values()].sort((a, b) => b.min - a.min);
+  }, [weekTemplate]);
+  const max = Math.max(1, ...catRows.map((r) => r.min));
   return (
     <aside className="panel tpl-panel" aria-label="Template details">
       <div className="panel-inner">
@@ -105,23 +114,20 @@ function TemplatePanel() {
             <span className="muted small">{hrs(totals.total)}</span>
           </div>
           {catRows.length === 0 && <p className="muted small">Nothing in the template yet.</p>}
-          <ul className="dist" aria-label="Intended hours per category">
-            {catRows.map(([id, m]) => {
-              const c = categories.find((x) => x.id === id);
-              return (
-                <li key={id} style={catVars(c?.color ?? "#888")}>
-                  <div className="dist-top">
-                    <span className="dist-name">
-                      <CatDot color={c?.color ?? "#888"} icon={c?.icon} /> {c?.name ?? "Unknown"}
-                    </span>
-                    <span className="dist-val">{hrs(m)}</span>
-                  </div>
-                  <div className="dist-bar">
-                    <span className="dist-plan" style={{ width: `${(m / max) * 100}%` }} />
-                  </div>
-                </li>
-              );
-            })}
+          <ul className="dist" aria-label="Intended hours per block name">
+            {catRows.map((r) => (
+              <li key={r.name} style={catVars(r.color)}>
+                <div className="dist-top">
+                  <span className="dist-name">
+                    <CatDot color={r.color} icon={r.icon} /> {r.name}
+                  </span>
+                  <span className="dist-val">{hrs(r.min)}</span>
+                </div>
+                <div className="dist-bar">
+                  <span className="dist-plan" style={{ width: `${(r.min / max) * 100}%` }} />
+                </div>
+              </li>
+            ))}
           </ul>
         </section>
         <section className="panel-sec">
@@ -164,7 +170,7 @@ function TemplateBlockEditor({ t }: { t: WeekTemplateBlock }) {
       <input
         className="field bare tpl-title"
         value={title}
-        placeholder={cat?.name ?? "Name"}
+        placeholder="Name"
         onChange={(e) => setTitle(e.target.value)}
         onBlur={() => (title.trim() || null) !== t.title && upd({ title: title.trim() || null }, "Rename template block")}
         onKeyDown={(e) => (e.stopPropagation(), e.key === "Enter" && (e.target as HTMLInputElement).blur())}
@@ -175,12 +181,8 @@ function TemplateBlockEditor({ t }: { t: WeekTemplateBlock }) {
         {WEEKDAY_NAMES[t.weekday]} · {fmtTime(start, tf)} – {fmtTime(start + t.durationMinutes * 60_000, tf)} · {hrs(t.durationMinutes)}
       </div>
       <div className="pf-row">
-        <span className="pf-label">Category</span>
-        <CategorySelect categories={categories} value={t.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} includeArchivedId={t.categoryId} />
-      </div>
-      <div className="pf-row">
         <span className="pf-label">Colour</span>
-        <ColorField value={t.color} fallback={cat?.color ?? "#888"} palette={PALETTE} onChange={(color) => upd({ color }, "Change colour")} />
+        <ColorField value={t.color} fallback="#888" palette={PALETTE} onChange={(color) => upd({ color }, "Change colour")} noAuto />
       </div>
       <div className="pf-row">
         <span className="pf-label">Day</span>

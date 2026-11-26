@@ -86,23 +86,67 @@ try {
   await expectText(page.locator(".tag-pill"), /#Houdini/, "tag added");
   ok("Second block: Studying, tagged #Houdini");
 
-  // 5-6. Start a focus session from the block at 15:10, stop at 16:20
+  // 5-6. Start a focus session at 15:10 from the Focus timer (v0.9: blocks have no Start button), stop at 16:20
   await page.clock.setSystemTime(local(2026, 11, 25, 15, 10));
-  await page.locator(".insp-actions").getByRole("button", { name: /Start session/ }).click();
+  if (await page.locator(".insp-actions").getByRole("button", { name: /Start session|Confirm/ }).count()) await fail("block inspector must not offer Start or Confirm (v0.9)");
+  await page.keyboard.press("Escape");
+  await page.locator(".focus-panel").getByRole("tablist", { name: "Timer mode" }).getByRole("tab", { name: "Stopwatch" }).click();
+  await page.locator(".focus-panel").getByRole("button", { name: "Start", exact: true }).click();
   await page.locator(".focus-panel.is-running").waitFor();
   await page.clock.setSystemTime(local(2026, 11, 25, 16, 20));
   await page.clock.runFor(1500);
   await page.locator(".focus-panel").getByRole("button", { name: "Stop", exact: true }).click();
   await expectText(page.locator(".toast"), /Recorded 70 min/, "70 minutes recorded");
-  ok("Session started from the block and stopped: 70 min recorded");
+  ok("Stopwatch started from the Focus timer and stopped: 70 min recorded");
 
   // 7. Planned vs actual for today
   await page.keyboard.press("Escape");
   await expectText(page.locator(".insp-stat, .panel"), /1h 10m/, "panel shows recorded");
   await expectText(page.locator(".hero-sub"), /4h 00m planned/, "panel shows planned total");
   await expectText(page.locator(".dist li"), /Studying.*1h 10m.*1h 30m/, "studying actual vs planned");
-  ok("Right panel shows 1h 10m recorded vs 4h 00m planned; Studying 1h 10m / 1h 30m");
+  if (!(await page.locator(".sidebar .side-time .hero-sub").count())) await fail("Today's time card must sit in the left sidebar (v0.9)");
+  if (await page.locator(".panel-area .hero").count()) await fail("Today's time card must have left the right panel (v0.9)");
+  ok("Left sidebar shows 1h 10m recorded vs 4h 00m planned; Studying 1h 10m / 1h 30m");
   await page.screenshot({ path: new URL("today.png", OUT).pathname });
+
+  // v0.9: Today's time card sits at the bottom of the left sidebar
+  await page.locator(".side-time").scrollIntoViewIfNeeded();
+  await page.locator(".sidebar").screenshot({ path: new URL("sidebar-time.png", OUT).pathname });
+
+  // v0.9: a short session (25 min) shows its title on one line in the Actual lane
+  {
+    await page.clock.setSystemTime(local(2026, 11, 25, 17, 0));
+    await page.locator(".focus-panel").getByRole("button", { name: "Start", exact: true }).click();
+    await page.locator(".focus-panel.is-running").waitFor();
+    await page.clock.setSystemTime(local(2026, 11, 25, 17, 25));
+    await page.clock.runFor(1500);
+    await page.locator(".focus-panel").getByRole("button", { name: "Stop", exact: true }).click();
+    await expectText(page.locator(".session-body.one-line"), /Studying · 25m/, "short session shows “Studying · 25m” on one line");
+    await page.screenshot({ path: new URL("short-session.png", OUT).pathname });
+    await page.locator(".session", { has: page.locator(".session-body.one-line") }).click();
+    await page.keyboard.press("Delete");
+    await page.locator(".session-body.one-line").waitFor({ state: "detached" }).catch(() => fail("deleting removes the test session"));
+    ok("Short sessions show their title on one line, e.g. “Studying · 25m”");
+  }
+
+  // v0.9: the right panel resizes by its left edge, remembers the width, double-click resets
+  {
+    const panelW = () => page.locator(".panel-area > .panel").last().evaluate((el) => el.getBoundingClientRect().width);
+    const w0 = await panelW();
+    const h = await page.locator(".panel-resizer").boundingBox();
+    await page.mouse.move(h.x + 3, h.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(h.x - 40, h.y + 200, { steps: 4 });
+    await page.mouse.move(h.x - 80, h.y + 200, { steps: 4 });
+    await page.mouse.up();
+    const w1 = await panelW();
+    if (Math.abs(w1 - (w0 + 80)) > 3) await fail(`right panel should widen by 80px (${w0} -> ${w1})`);
+    const saved = await page.evaluate(async () => (await import("/src/state/store.ts")).store.get().settings.rightPanelWidth);
+    if (Math.abs(saved - w1) > 1) await fail(`width should be remembered (${saved})`);
+    await page.locator(".panel-resizer").dblclick();
+    await page.waitForFunction((w) => Math.abs(document.querySelector(".panel-area > .panel:last-child").getBoundingClientRect().width - w) < 2, w0);
+    ok("Right panel resizes by dragging its edge, the width is remembered, double-click resets it");
+  }
 
   // Phase 2: rename inline (double-click) and with F2, colour follows the category
   const first = page.locator(".lane-plan .block").first();

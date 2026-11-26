@@ -16,7 +16,7 @@
 // In calendar mode the template's suggestions are drawn as ghosts in the Plan lane.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, LayoutTemplate, Play, Repeat, X } from "lucide-react";
+import { LayoutTemplate, Repeat } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import type { Block, Id, Interval, Session } from "../domain/types";
@@ -26,7 +26,7 @@ import { fmt, fmtDuration, fmtHourLabel, fmtTime } from "../domain/format";
 import { computeStats } from "../domain/stats";
 import { CatDot, catVars, lookOf } from "./bits";
 import { CategoryPicker } from "./CategoryPicker";
-import { GhostContextMenu, ItemContextMenu, TemplateBlockMenu } from "./ContextMenus";
+import { ItemContextMenu, TemplateBlockMenu } from "./ContextMenus";
 import * as L from "../state/library";
 import { REF_WEEK, suggestionsForDay, toRefBlock, WEEKDAY_NAMES, weekdayOf, type Suggestion } from "../domain/weekTemplate";
 import { registerDropTarget } from "./presetDrag";
@@ -34,7 +34,7 @@ import { registerDropTarget } from "./presetDrag";
 type Lane = "plan" | "actual";
 
 type Drag =
-  | { kind: "create"; lane: Lane; day: number; anchor: number; cur: number; x0: number; y0: number; moved: boolean; fromGhost?: boolean }
+  | { kind: "create"; lane: Lane; day: number; anchor: number; cur: number; x0: number; y0: number; moved: boolean }
   | { kind: "move"; lane: Lane; id: Id; orig: Interval; grab: number; day: number; startMin: number; copy: boolean; x0: number; y0: number; moved: boolean }
   | { kind: "resize"; lane: Lane; id: Id; orig: Interval; edge: Edge; cur: number; moved: boolean };
 
@@ -81,7 +81,6 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
   const dragRef = useRef<Drag | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; kind: "block" | "session"; id: Id; at: number } | null>(null);
-  const [ghostMenu, setGhostMenu] = useState<{ x: number; y: number; id: Id; day: number } | null>(null);
   const [tplMenu, setTplMenu] = useState<{ x: number; y: number; id: Id } | null>(null);
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
@@ -221,9 +220,7 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-action]")) return; // hover buttons inside items
-    // Dragging across a template suggestion still plans a block; a plain click on one does nothing
-    // (double-click confirms it).
-    const fromGhost = !!target.closest("[data-ghost]");
+    // Template overlays (v0.9) take no pointer events: clicks and drags land on the lane beneath.
     const colEl = target.closest<HTMLDivElement>("[data-day]");
     if (!colEl) return;
     const day = Number(colEl.dataset.day);
@@ -247,7 +244,7 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
       e.preventDefault();
       const m = minuteAt(e.clientY, colEl, snapMinutes);
       const anchor = Math.floor(minuteAt(e.clientY, colEl, 1, true) / snapMinutes) * snapMinutes;
-      updateDrag({ kind: "create", lane, day, anchor, cur: m, x0: e.clientX, y0: e.clientY, moved: false, fromGhost });
+      updateDrag({ kind: "create", lane, day, anchor, cur: m, x0: e.clientX, y0: e.clientY, moved: false });
     }
   };
 
@@ -294,15 +291,16 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
         if (!d.moved) {
           // A plain click on an empty Plan slot creates a default-length block there, unless it is
           // just clearing a selection. In the Actual lane a click only clears the selection.
-          if (d.fromGhost) return;
           const hadSelection = (tpl ? store.get().tplSelection : store.get().selection) !== null;
           select(null);
           if (d.lane !== "plan" || hadSelection) return;
           const iv = dragToInterval(d.day, d.anchor, Math.min(1440, d.anchor + settings.defaultBlockMinutes), snapMinutes);
+          if (tpl) return void L.drawTemplateBlock(iv).catch(A.reportError); // v0.9: no category; name it inline
           setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
           return;
         }
         const iv = dragToInterval(d.day, d.anchor, d.cur, snapMinutes);
+        if (tpl) return void L.drawTemplateBlock(iv).catch(A.reportError);
         setPicker({ x: e.clientX + 8, y: e.clientY - 20, lane: d.lane, interval: iv });
       } else if (d.kind === "move") {
         if (!d.moved) {
@@ -365,11 +363,6 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest("[data-action]")) return;
-    const ghostEl = target.closest<HTMLElement>("[data-ghost]");
-    if (ghostEl) {
-      void L.confirmSuggestion(ghostEl.dataset.ghost!, Number(ghostEl.dataset.ghostDay)).catch(A.reportError);
-      return;
-    }
     const itemEl = target.closest<HTMLElement>("[data-item]");
     if (itemEl) {
       const id = itemEl.dataset.item!;
@@ -390,12 +383,6 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
 
   const onContextMenu = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    const ghostEl = target.closest<HTMLElement>("[data-ghost]");
-    if (ghostEl) {
-      e.preventDefault();
-      setGhostMenu({ x: e.clientX, y: e.clientY, id: ghostEl.dataset.ghost!, day: Number(ghostEl.dataset.ghostDay) });
-      return;
-    }
     const itemEl = target.closest<HTMLElement>("[data-item]");
     if (!itemEl) return;
     e.preventDefault();
@@ -506,7 +493,6 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
         />
       )}
       {menu && <ItemContextMenu {...menu} onClose={() => setMenu(null)} />}
-      {ghostMenu && <GhostContextMenu {...ghostMenu} onClose={() => setGhostMenu(null)} />}
       {tplMenu && <TemplateBlockMenu {...tplMenu} onClose={() => setTplMenu(null)} />}
     </div>
   );
@@ -586,8 +572,9 @@ function DayColumn(p: ColumnProps) {
   }, [p.sessions, p.preview, p.day, p.now]);
 
   const planLayout = useMemo(
-    () => layoutColumns([...planItems.map((b) => ({ id: b.id, startAt: b.startAt, endAt: b.endAt })), ...p.ghosts.map((g) => ({ id: `ghost:${g.tb.id}`, startAt: g.startAt, endAt: g.endAt }))]),
-    [planItems, p.ghosts],
+    // Template overlays (v0.9) sit behind the plan at full width and never take a column.
+    () => layoutColumns(planItems.map((b) => ({ id: b.id, startAt: b.startAt, endAt: b.endAt }))),
+    [planItems],
   );
   const actualLayout = useMemo(() => layoutColumns(actualItems.map((s) => ({ id: s.id, startAt: s.startAt, endAt: s.end }))), [actualItems]);
 
@@ -599,6 +586,9 @@ function DayColumn(p: ColumnProps) {
   return (
     <div className={`tl-col ${isToday ? "today" : ""}`} data-day={p.day} ref={p.refCb}>
       <div className="lane lane-plan" data-lane="plan">
+        {p.ghosts.map((g) => (
+          <GhostView key={g.tb.id} g={g} pos={place({ start: g.startAt, end: g.endAt })} lay={FULL_WIDTH} catById={p.catById} tagById={p.tagById} compact={p.compact} />
+        ))}
         {planItems.map((b) => {
           const pos = place({ start: b.startAt, end: b.endAt });
           const lay = planLayout.get(b.id) ?? { col: 0, cols: 1 };
@@ -619,9 +609,6 @@ function DayColumn(p: ColumnProps) {
             />
           );
         })}
-        {p.ghosts.map((g) => (
-          <GhostView key={g.tb.id} g={g} pos={place({ start: g.startAt, end: g.endAt })} lay={planLayout.get(`ghost:${g.tb.id}`) ?? { col: 0, cols: 1 }} catById={p.catById} tagById={p.tagById} compact={p.compact} />
-        ))}
         {ghostIv && createGhost?.lane === "plan" && <CreateGhost pos={place(ghostIv)} iv={ghostIv} />}
         {p.drop && <CreateGhost pos={place(p.drop.iv)} iv={p.drop.iv} drop={p.drop} />}
       </div>
@@ -668,7 +655,10 @@ function CreateGhost({ pos, iv, actual, drop }: { pos: { top: number; height: nu
   );
 }
 
-/** A weekly-template suggestion: dimmed, dashed, never in the Actual lane. Double-click to plan it. */
+const FULL_WIDTH = { col: 0, cols: 1 };
+
+/** A weekly-template overlay (v0.9): a dimmed, dashed guide behind the plan at full width. It takes no
+ *  pointer events and can't be confirmed or dismissed; blocks are drawn over it. Never in the Actual lane. */
 function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clippedTop: boolean; clippedBottom: boolean }; lay: { col: number; cols: number }; catById: ColumnProps["catById"]; tagById: ColumnProps["tagById"]; compact: boolean }) {
   const { tb, day } = p.g;
   const cat = p.catById.get(tb.categoryId);
@@ -676,16 +666,13 @@ function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clipp
   const label = tb.title || cat?.name || "Untitled";
   const timeLabel = `${fmtTime(p.g.startAt)} – ${fmtTime(p.g.endAt)}`;
   const tiny = p.pos.height < 30;
-  const tagNames = tb.tagIds.map((t) => p.tagById.get(t)?.name).filter(Boolean) as string[];
-  const run = (fn: () => Promise<unknown>) => (e: React.MouseEvent) => (e.stopPropagation(), void fn().catch(A.reportError));
   return (
     <div
       className={`block ghost-suggestion ${tiny ? "tiny" : ""}`}
       style={itemStyle(p.pos, p.lay, look.color)}
       data-ghost={tb.id}
       data-ghost-day={day}
-      title={`Template suggestion: ${label}\n${timeLabel}${tagNames.length ? "\n#" + tagNames.join(" #") : ""}\nDouble-click to add it to the plan`}
-      aria-label={`Template suggestion ${label}, ${timeLabel}`}
+      aria-hidden
     >
       <div className="block-body">
         <div className="block-title">
@@ -695,14 +682,6 @@ function GhostView(p: { g: Suggestion; pos: { top: number; height: number; clipp
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && <div className="block-meta">{timeLabel}{!p.compact ? " · Template" : ""}</div>}
-      </div>
-      <div className="block-actions">
-        <button data-action className="mini-act" title="Add to plan" aria-label="Add to plan" onClick={run(() => L.confirmSuggestion(tb.id, day))}>
-          <Check size={12} />
-        </button>
-        <button data-action className="mini-act subtle" title="Dismiss for this day" aria-label="Dismiss for this day" onClick={run(() => L.dismissSuggestion(tb.id, day))}>
-          <X size={12} />
-        </button>
       </div>
     </div>
   );
@@ -740,7 +719,6 @@ function BlockView(p: {
   const timeLabel = `${fmtTime(b.startAt)} – ${fmtTime(b.endAt)}`;
   const tiny = p.pos.height < 30;
   const isPast = !p.tpl && b.endAt <= p.now;
-  const canConfirm = b.status === "planned" && b.startAt < p.now;
   const subtitle = [b.title && cat ? cat.name : null, tagNames.join(", ") || null].filter(Boolean).join(" · ");
   return (
     <div
@@ -766,18 +744,6 @@ function BlockView(p: {
         )}
         {!tiny && p.compact && subtitle && p.pos.height > 54 && <div className="block-meta">{subtitle}</div>}
       </div>
-      {!p.ghost && !p.tpl && b.status !== "completed" && b.status !== "in_progress" && b.status !== "skipped" && (
-        <div className="block-actions">
-          {canConfirm && (
-            <button data-action className="mini-act" title="Confirm as done (C)" onClick={() => void A.completeBlockManually(b.id)}>
-              <Check size={12} />
-            </button>
-          )}
-          <button data-action className="mini-act" title="Start session" onClick={() => void L.startFromBlock(b.id).catch(A.reportError)}>
-            <Play size={11} />
-          </button>
-        </div>
-      )}
       {!p.pos.clippedBottom && <div className="handle bottom" data-handle="end" />}
     </div>
   );
@@ -813,12 +779,19 @@ function SessionView(p: {
         </div>
       ) : (
         !p.compact &&
-        p.pos.height >= 22 && (
+        p.pos.height >= 12 &&
+        (p.pos.height >= 40 ? (
           <div className="session-body">
             <span className="session-dur">{dur}</span>
-            {p.pos.height >= 40 && <span className="session-name">{s.title || cat?.name}</span>}
+            <span className="session-name">{s.title || cat?.name}</span>
           </div>
-        )
+        ) : (
+          // v0.9: short sessions (15/25 min) get one line, "Name · 25m", cut with an ellipsis.
+          <div className="session-body one-line">
+            <span className="session-name">{s.title || cat?.name || "Session"}</span>
+            <span className="session-dur"> · {dur}</span>
+          </div>
+        ))
       )}
       {!running && <div className="handle bottom" data-handle="end" />}
     </div>

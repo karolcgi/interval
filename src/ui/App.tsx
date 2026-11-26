@@ -35,6 +35,7 @@ export function App() {
   const demo = useApp((s) => s.demo);
   const sidebarOpen = useApp((s) => s.settings.sidebarOpen);
   const sidebarWidth = useApp((s) => s.settings.sidebarWidth);
+  const panelWidth = useApp((s) => s.settings.rightPanelWidth);
   const panelOpen = useApp((s) => s.settings.rightPanelOpen);
   useTheme();
   useShortcuts();
@@ -61,7 +62,7 @@ export function App() {
   if (!ready) return <div className="boot-screen" aria-busy="true" />;
 
   return (
-    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`} style={sidebarWidth ? ({ ["--sidebar-w" as string]: `${sidebarWidth}px` } as React.CSSProperties) : undefined}>
+    <div className={`shell ${sidebarOpen ? "" : "no-sidebar"}`} style={{ ...(sidebarWidth ? { ["--sidebar-w" as string]: `${sidebarWidth}px` } : {}), ...(panelWidth ? { ["--panel-w" as string]: `${panelWidth}px` } : {}) } as React.CSSProperties}>
       <TopBar />
       {sidebarOpen ? <Sidebar /> : <div />}
       {sidebarOpen && <SidebarResizer />}
@@ -205,8 +206,6 @@ function runAction(id: string) {
       return void A.updateSettings({ rightPanelOpen: !s.settings.rightPanelOpen });
     case "split":
       return sel?.kind === "block" ? void A.splitBlock(sel.id) : undefined;
-    case "confirm":
-      return sel?.kind === "block" ? void A.completeBlockManually(sel.id) : undefined;
     case "rename":
       return sel ? A.startRename(sel) : undefined;
     case "dayLog":
