@@ -46,7 +46,7 @@ describe("Lucide icons replace emoji", () => {
       params: [id, id, icon, emoji],
     });
     await db.batch([ins("work", "briefcase", "💼"), ins("dogs", null, "🐕"), ins("plain", "user", null), ins("odd", null, "🦄"), ins("gym", null, "🏋️")]);
-    expect(await migrate(db)).toEqual({ from: 7, to: 9 });
+    expect(await migrate(db)).toEqual({ from: 7, to: MIGRATIONS[MIGRATIONS.length - 1].version });
     const icon = Object.fromEntries((await repo.listCategories(db)).map((c) => [c.id, c.icon]));
     expect(icon).toEqual({ work: "briefcase", dogs: "dog", plain: null, odd: null, gym: "dumbbell" });
   });

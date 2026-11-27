@@ -326,7 +326,41 @@ Tests run in `Europe/Warsaw` (set in `src/test/setup.ts`) so DST logic is always
 - "Today's time" and "Planned vs actual" are `ui/DayTimeSummary.tsx`, rendered at the bottom of the left sidebar for the
   focused day.
 
+## v0.10 notes (Obsidian & TaskNotes integration, Phase 1)
+
+Ownership: Obsidian owns tasks (through TaskNotes) and project notes; Interval owns plans, sessions, notes and
+statistics. Interval keeps a read-only cache and never writes to the vault or to TaskNotes in this phase.
+The full brief and phase plan: the technical assessment doc linked from PR #9.
+
+- **Rust bridge (`src-tauri/src/obsidian.rs`).** `tn_request(base, method, path, body)` calls the TaskNotes HTTP API.
+  It accepts only `http://localhost|127.0.0.1|[::1]` and paths under `/api/`, and adds `Authorization: Bearer` itself.
+  The token is stored with `keyring` in the OS credential store (`tn_token_set`, `tn_token_status`); it is never in the
+  database, settings, exports or the webview. HTTP goes through Rust because TaskNotes only allows loopback browser
+  origins (the Tauri origin isn't one). `vault_scan(vault, folder, known)` lists `.md` files under a vault folder with
+  YAML frontmatter as JSON (`serde_yaml`), skips dot folders, caps at 5000 files / depth 8, and doesn't re-read notes
+  whose mtime matches `known`.
+- **Cache (migration v10).** `ext_items (kind task|project, ref = vault path, uid, title, status, active, data, raw, mtime,
+  seen_at, gone_at)`. A refresh upserts what it sees and sets `gone_at` on what it didn't; rows are never deleted, so a
+  renamed/deleted task keeps its last title for history. A failed source marks nothing gone.
+- **Mappings** (`settings.integration`, `domain/integration.ts`): projects folder, project rule (folder / tag / property),
+  title/status/cover/category/client/colour properties, active status values; task project field, group field, category
+  field, completed statuses. Nothing about Karol's vault is hardcoded. Changing the project mapping re-reads every note.
+- **Tasks**: `POST /api/tasks/query` for active tasks plus tasks completed in the last 14 days; TaskNotes versions without
+  it fall back to paging `GET /api/tasks` (200 per page) and filtering here. Links in the project field resolve to
+  project paths (exact path, then unique file name; ambiguous = unresolved).
+- **Refresh**: at startup (after showing the cache) and on demand (Settings). Polling on focus / interval is Phase 2.
+  Webhooks were rejected for now: TaskNotes disables a webhook after 10 failed deliveries, which happens whenever
+  Interval is closed.
+- **Status** (`store.integration`): off / connected / offline / syncing / error, last successful sync, last error.
+- **Upgrade safety**: before migrating an existing desktop database, `db_backup_before_migration` writes
+  `backups/<name>-before-v<N>-<timestamp>.db` (outside the daily rotation).
+- Tests: `src/state/integration.test.ts` (mappings, links, filters, refresh against a fake API, offline, token),
+  `e2e/integration.mjs` (Settings flow against a fake local TaskNotes; asserts no write calls), Rust unit tests for the
+  loopback check and frontmatter parsing.
+
 ## Roadmap notes
 
-Next (not started; needs Karol's guidance): read-only TaskNotes integration from the Obsidian vault.
+Next: integration Phase 2 (PROJECTS and TASKS sidebar sections, filters/grouping/search, polling, drag to PLAN with
+source references, open in Obsidian). Then Phase 3 (task/project on sessions, explicit completion), Phase 4 (daily-note
+managed section; reuse `/mnt/project-files/diary-parked/`), Phase 5 (project analytics, remove Planned vs actual).
 Spec "possible future enhancements": activity detection, calendar sync, ActivityWatch import.

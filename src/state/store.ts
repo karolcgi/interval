@@ -87,6 +87,20 @@ export interface AppState {
   tplRenaming: Id | null;
   focusOffer: { blockId: Id; focusPresetId: string } | null; // "use this preset's focus timer?"
   presetEditing: Id | "new" | null; // preset open in the editor panel
+  /** Obsidian & TaskNotes integration status (v0.10). */
+  integration: IntegrationStatus;
+}
+
+export type SyncState = "off" | "connected" | "offline" | "syncing" | "error";
+
+export interface IntegrationStatus {
+  state: SyncState;
+  lastSync: number | null; // last fully successful refresh
+  error: string | null; // last error, shown in Settings
+  tasks: number; // active cached tasks
+  projects: number; // cached projects
+  version: string | null; // TaskNotes version, when the API reports it
+  rev: number; // bumped after each refresh so views reload the cache
 }
 
 const initial: AppState = {
@@ -137,6 +151,7 @@ const initial: AppState = {
   tplRenaming: null,
   focusOffer: null,
   presetEditing: null,
+  integration: { state: "off", lastSync: null, error: null, tasks: 0, projects: 0, version: null, rev: 0 },
 };
 
 type Listener = () => void;

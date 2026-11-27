@@ -137,6 +137,20 @@ pub fn db_backup(state: State<Db>, dest: String) -> Result<(), String> {
 /// Once per calendar day, copy the database to `<dir>/<name>-YYYY-MM-DD.db` and keep only the
 /// newest `keep` copies. `dir` defaults to `<data dir>/backups`. `force` re-writes today's copy
 /// (used by "Back up now"). Returns the path written, or None if today's copy already existed.
+/// Copy of the database taken before a schema upgrade: `<data folder>/backups/<name>-before-v<N>-<date>.db`.
+/// Not part of the daily rotation, so it's never pruned automatically.
+#[tauri::command]
+pub fn db_backup_before_migration(state: State<Db>, version: u32) -> Result<String, String> {
+    let guard = state.0.lock().map_err(err)?;
+    let (conn, path) = guard.as_ref().ok_or("Database is not open")?;
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("interval").to_string();
+    let dir = path.parent().map(|p| p.join("backups")).ok_or("No data folder")?;
+    let stamp = chrono::Local::now().format("%Y-%m-%d-%H%M%S").to_string();
+    let dest = dir.join(format!("{stem}-before-v{version}-{stamp}.db"));
+    backup_to(conn, &dest)?;
+    Ok(dest.display().to_string())
+}
+
 #[tauri::command]
 pub fn db_backup_daily(state: State<Db>, keep: usize, dir: Option<String>, force: Option<bool>) -> Result<Option<String>, String> {
     let guard = state.0.lock().map_err(err)?;

@@ -63,7 +63,7 @@ describe("weekly template without categories", () => {
         params: [id, title, icon, color],
       })),
     ]);
-    expect(await migrate(db)).toEqual({ from: 8, to: 9 });
+    expect(await migrate(db)).toEqual({ from: 8, to: MIGRATIONS[MIGRATIONS.length - 1].version });
     const rows = Object.fromEntries((await repo.listWeekTemplate(db)).map((x) => [x.id, [x.categoryId, x.title, x.icon, x.color]]));
     expect(rows).toEqual({
       a: ["", "Studying", "graduation-cap", "#8bbca0"],

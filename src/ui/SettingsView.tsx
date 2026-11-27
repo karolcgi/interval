@@ -9,6 +9,7 @@ import { dayKey } from "../domain/time";
 import { Segmented } from "./bits";
 import { switchDemo } from "../bootstrap";
 import { FocusTimerSettings } from "./FocusSettings";
+import { IntegrationSettings } from "./IntegrationSettings";
 
 const ACCENTS = ["#d5d3ca", "#8298d7", "#8bbca0", "#ba9ad0", "#77b3bf", "#d49a72", "#e79b8b"];
 
@@ -283,7 +284,8 @@ export function SettingsView() {
 
       {tab === "obsidian" && (
 <>
-<h2 className="section-title">Obsidian</h2>
+<IntegrationSettings />
+<h2 className="section-title">Markdown export</h2>
       <div className="settings-block">
         <Row
           label="Notes folder"

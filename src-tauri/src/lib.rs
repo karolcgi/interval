@@ -1,4 +1,5 @@
 mod db;
+mod obsidian;
 mod shell;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,6 +72,7 @@ pub fn run() {
             db::db_batch,
             db::db_backup,
             db::db_backup_daily,
+            db::db_backup_before_migration,
             db::write_vault_file,
             db::db_close,
             db::write_text_file,
@@ -90,7 +92,11 @@ pub fn run() {
             shell::restore_main,
             shell::is_fullscreen_active,
             shell::import_sound,
-            shell::read_sound
+            shell::read_sound,
+            obsidian::tn_request,
+            obsidian::tn_token_set,
+            obsidian::tn_token_status,
+            obsidian::vault_scan
         ])
         .run(tauri::generate_context!())
         .expect("error while running Interval");
