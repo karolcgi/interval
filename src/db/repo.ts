@@ -5,6 +5,7 @@ import type { DbDriver, SqlValue, Statement } from "./driver";
 import type { ActivityPreset, Block, BlockStatus, Budget, PersonalAchievement, Category, DailyNote, DayTemplate, EntryKind, FocusRun, Id, JournalEntry, Session, SessionMode, Settings, Tag, TemplateBlock, WeekTemplateBlock } from "../domain/types";
 import type { RecurrenceRule } from "../domain/recurrence";
 import { DEFAULT_SETTINGS } from "../domain/types";
+import { withDefaults as withIntegrationDefaults, type IntegrationConfig } from "../domain/integration";
 
 export function newId(): Id {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -247,6 +248,7 @@ export async function loadSettings(db: DbDriver): Promise<Settings> {
   }
   // Object settings saved by an older version get keys added since then (e.g. the Quick Capture shortcut).
   s.globalShortcuts = { ...DEFAULT_SETTINGS.globalShortcuts, ...(s.globalShortcuts as object) };
+  s.integration = withIntegrationDefaults(s.integration as Partial<IntegrationConfig>);
   return s as unknown as Settings;
 }
 
@@ -659,4 +661,70 @@ export function dismissStmt(d: Dismissal): Statement {
 
 export function undismissStmt(day: string, templateBlockId: Id): Statement {
   return { sql: "DELETE FROM template_dismissals WHERE day = ? AND template_block_id = ?", params: [day, templateBlockId] };
+}
+
+// ---------------------------------------------------------------- obsidian integration cache (v10)
+
+export interface ExtItemRow<T = unknown> {
+  kind: "task" | "project";
+  ref: string;
+  uid: string | null;
+  title: string;
+  status: string | null;
+  active: boolean;
+  data: T;
+  mtime: number | null;
+  seenAt: number;
+  goneAt: number | null;
+  updatedAt: number;
+}
+
+export async function listExtItems<T>(db: DbDriver, kind: "task" | "project", includeGone = false): Promise<ExtItemRow<T>[]> {
+  const rows = await db.select<Row>(
+    `SELECT * FROM ext_items WHERE kind = ?${includeGone ? "" : " AND gone_at IS NULL"} ORDER BY title COLLATE NOCASE`,
+    [kind],
+  );
+  return rows.map((r) => {
+    let data: unknown = {};
+    try {
+      data = JSON.parse(String(r.data ?? "{}"));
+    } catch {
+      /* keep {} */
+    }
+    return {
+      kind: r.kind as "task" | "project",
+      ref: String(r.ref),
+      uid: str(r.uid),
+      title: String(r.title),
+      status: str(r.status),
+      active: Number(r.active) === 1,
+      data: data as T,
+      mtime: num(r.mtime),
+      seenAt: Number(r.seen_at),
+      goneAt: num(r.gone_at),
+      updatedAt: Number(r.updated_at),
+    };
+  });
+}
+
+/** Insert or refresh one cached item; it is "seen" now, so a previously gone item comes back. */
+export function upsertExtItemStmt(i: { kind: "task" | "project"; ref: string; uid: string | null; title: string; status: string | null; active: boolean; data: unknown; raw?: unknown; mtime?: number | null }, now: number): Statement {
+  return {
+    sql: `INSERT INTO ext_items (kind, ref, uid, title, status, active, data, raw, mtime, seen_at, gone_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+          ON CONFLICT(kind, ref) DO UPDATE SET uid = excluded.uid, title = excluded.title, status = excluded.status,
+            active = excluded.active, data = excluded.data, raw = excluded.raw, mtime = excluded.mtime,
+            seen_at = excluded.seen_at, gone_at = NULL, updated_at = excluded.updated_at`,
+    params: [i.kind, i.ref, i.uid, i.title, i.status, i.active ? 1 : 0, JSON.stringify(i.data ?? {}), i.raw === undefined ? null : JSON.stringify(i.raw), i.mtime ?? null, now, now],
+  };
+}
+
+/** Marks every item of a kind not seen in the latest full refresh (seen_at < since) as gone. Never deletes. */
+export function markExtGoneStmt(kind: "task" | "project", since: number, now: number): Statement {
+  return { sql: "UPDATE ext_items SET gone_at = ? WHERE kind = ? AND seen_at < ? AND gone_at IS NULL", params: [now, kind, since] };
+}
+
+/** Marks seen without changing the cached data (project note unchanged since the last scan). */
+export function touchExtItemStmt(kind: "task" | "project", ref: string, now: number): Statement {
+  return { sql: "UPDATE ext_items SET seen_at = ?, gone_at = NULL WHERE kind = ? AND ref = ?", params: [now, kind, ref] };
 }

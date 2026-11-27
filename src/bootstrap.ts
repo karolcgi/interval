@@ -1,5 +1,5 @@
 import type { DbDriver } from "./db/driver";
-import { migrate } from "./db/migrations";
+import { LATEST_VERSION, migrate } from "./db/migrations";
 import * as repo from "./db/repo";
 import { generateDemoData } from "./db/fixtures";
 import { TauriDriver } from "./db/tauri-driver";
@@ -34,6 +34,15 @@ export async function boot() {
   const demo = params.has("demo") ? params.get("demo") === "1" : bootPrefs.demo;
   try {
     const db = await openDriver(demo);
+    // Before a schema upgrade of an existing database, take a backup (best effort; never blocks startup).
+    if (db.kind === "tauri") {
+      const v = await db.select<{ v: number | null }>("SELECT MAX(version) AS v FROM schema_migrations").catch(() => [] as { v: number | null }[]);
+      const from = Number(v[0]?.v ?? 0);
+      if (from > 0 && from < LATEST_VERSION) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("db_backup_before_migration", { version: LATEST_VERSION }).catch((e) => console.warn("pre-migration backup failed", e));
+      }
+    }
     await migrate(db);
     await repo.seedDefaults(db);
     if (demo) {
@@ -46,6 +55,7 @@ export async function boot() {
     await checkSleepOnStartup();
     await initEngine();
     store.set({ ready: true });
+    void import("./state/integration").then((i) => i.initIntegration()).catch((e) => console.warn(e));
     if (db.kind === "tauri") {
       // Daily rolling backup to the configured folder. Failure is reported but never blocks the app.
       void backupNow(false);

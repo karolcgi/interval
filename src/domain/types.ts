@@ -1,4 +1,5 @@
 import { DEFAULT_FOCUS_PRESETS, type FocusPreset } from "./focus";
+import { DEFAULT_INTEGRATION, type IntegrationConfig } from "./integration";
 
 // Core domain types. All timestamps are UTC epoch milliseconds.
 // `tz` records the IANA zone the user was in when the record was created,
@@ -268,6 +269,8 @@ export interface Settings {
   templateOnPast: boolean; // also show them on past days (for comparison)
   presetView: "list" | "grid";
   presetSort: "custom" | "name" | "duration" | "category";
+  // Obsidian & TaskNotes integration (v0.10). The API token is not here: it lives in the OS credential store.
+  integration: IntegrationConfig;
 }
 
 export type SoundEvent = "focusStart" | "focusEnd" | "breakStart" | "breakEnd" | "cycleEnd";
@@ -343,6 +346,7 @@ export const DEFAULT_SETTINGS: Settings = {
   templateOnPast: false,
   presetView: "list",
   presetSort: "custom",
+  integration: DEFAULT_INTEGRATION,
 };
 
 /** A half-open interval [start, end) in epoch ms. */

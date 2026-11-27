@@ -1,6 +1,6 @@
 [package]
 name = "interval"
-version = "0.9.0"
+version = "0.10.0"
 description = "Interval — local-first time blocking and time tracking"
 edition = "2021"
 rust-version = "1.77"
@@ -25,6 +25,10 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Obsidian / TaskNotes integration: local HTTP (no TLS needed, loopback only), OS credential store, YAML frontmatter.
+ureq = { version = "2", default-features = false, features = ["json"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+serde_yaml = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }

@@ -298,6 +298,30 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
          category_id = ''`,
     ],
   },
+  {
+    version: 10,
+    name: "obsidian integration cache",
+    up: [
+      // Read-only cache of TaskNotes tasks and Obsidian project notes (integration Phase 1). Obsidian owns them;
+      // rows are never deleted by sync: a note that disappears gets gone_at and keeps its last title.
+      `CREATE TABLE ext_items (
+         kind TEXT NOT NULL CHECK (kind IN ('task','project')),
+         ref TEXT NOT NULL,
+         uid TEXT,
+         title TEXT NOT NULL,
+         status TEXT,
+         active INTEGER NOT NULL DEFAULT 1,
+         data TEXT NOT NULL DEFAULT '{}',
+         raw TEXT,
+         mtime INTEGER,
+         seen_at INTEGER NOT NULL,
+         gone_at INTEGER,
+         updated_at INTEGER NOT NULL,
+         PRIMARY KEY (kind, ref)
+       )`,
+      `CREATE INDEX ext_items_uid ON ext_items(kind, uid) WHERE uid IS NOT NULL`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
