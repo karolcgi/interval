@@ -12,7 +12,8 @@ use serde_json::Value as Json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 const KEYRING_SERVICE: &str = "app.interval.desktop";
 const KEYRING_USER: &str = "tasknotes-api-token";
@@ -232,6 +233,192 @@ pub async fn vault_scan(vault: String, folder: String, known: Option<HashMap<Str
     tauri::async_runtime::spawn_blocking(move || scan(vault, folder, known)).await.map_err(|e| e.to_string())?
 }
 
+// ------------------------------------------------------------------ v0.12: .base files, vault check, covers
+
+const MAX_YAML_BYTES: u64 = 1024 * 1024;
+const MAX_INDEX_FILES: usize = 60_000;
+const IMAGE_EXTS: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp"];
+
+/// A vault-relative path that stays inside the vault (no `..`, not absolute).
+fn inside(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let rel = rel.trim().trim_matches(|c| c == '/' || c == '\\');
+    let rel_path = Path::new(rel);
+    if rel.is_empty() || rel_path.is_absolute() || rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
+        return Err("The path must be inside the vault".into());
+    }
+    Ok(root.join(rel_path))
+}
+
+fn read_yaml(vault: String, rel: String) -> Result<Json, String> {
+    let root = PathBuf::from(vault.trim());
+    let p = inside(&root, &rel)?;
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if !matches!(ext.as_str(), "base" | "yaml" | "yml") {
+        return Err("Only .base files can be read here".into());
+    }
+    let meta = fs::metadata(&p).map_err(|_| format!("{rel} doesn't exist in the vault"))?;
+    if meta.len() > MAX_YAML_BYTES {
+        return Err(format!("{rel} is too large"));
+    }
+    let text = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+    let y: serde_yaml::Value = serde_yaml::from_str(&text).map_err(|e| format!("{rel} isn't valid YAML: {e}"))?;
+    serde_json::to_value(y).map_err(|e| e.to_string())
+}
+
+/// Reads and parses a `.base` file in the vault (read-only).
+#[tauri::command]
+pub async fn vault_read_yaml(vault: String, rel: String) -> Result<Json, String> {
+    tauri::async_runtime::spawn_blocking(move || read_yaml(vault, rel)).await.map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+pub struct ChildVault {
+    name: String,
+    tasknotes: bool,
+}
+
+#[derive(Serialize)]
+pub struct VaultProbe {
+    exists: bool,
+    obsidian: bool,
+    tasknotes: bool,
+    children: Vec<ChildVault>,
+}
+
+fn has_tasknotes(dir: &Path) -> bool {
+    dir.join(".obsidian").join("plugins").join("tasknotes").is_dir()
+}
+
+/// What the chosen vault folder looks like: is it a vault, does it have TaskNotes, and which of its direct
+/// sub-folders are vaults themselves (to spot a vault folder chosen one level too high).
+#[tauri::command]
+pub fn vault_probe(path: String) -> VaultProbe {
+    let root = PathBuf::from(path.trim());
+    if path.trim().is_empty() || !root.is_dir() {
+        return VaultProbe { exists: false, obsidian: false, tasknotes: false, children: vec![] };
+    }
+    let mut children = Vec::new();
+    if let Ok(rd) = fs::read_dir(&root) {
+        for e in rd.flatten().take(500) {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || !p.is_dir() || !p.join(".obsidian").is_dir() {
+                continue;
+            }
+            children.push(ChildVault { tasknotes: has_tasknotes(&p), name });
+        }
+    }
+    children.sort_by(|a, b| a.name.cmp(&b.name));
+    VaultProbe { exists: true, obsidian: root.join(".obsidian").is_dir(), tasknotes: has_tasknotes(&root), children }
+}
+
+struct FileIndex {
+    root: PathBuf,
+    built: Instant,
+    by_name: HashMap<String, PathBuf>,
+}
+
+static INDEX: Mutex<Option<FileIndex>> = Mutex::new(None);
+
+fn index_walk(dir: &Path, depth: usize, out: &mut HashMap<String, PathBuf>, count: &mut usize) {
+    if depth > 12 || *count >= MAX_INDEX_FILES {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_dir() {
+            index_walk(&e.path(), depth + 1, out, count);
+        } else if ft.is_file() {
+            *count += 1;
+            let ext = Path::new(&name).extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if IMAGE_EXTS.contains(&ext.as_str()) {
+                out.entry(name.to_lowercase()).or_insert_with(|| e.path());
+            }
+        }
+    }
+}
+
+fn is_image(p: &Path) -> bool {
+    let ext = p.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    IMAGE_EXTS.contains(&ext.as_str())
+}
+
+/// Finds an image the way Obsidian resolves an embed: a vault-relative path first, else a unique file name
+/// anywhere in the vault (attachments folder included).
+fn resolve_one(root: &Path, target: &str, idx: &mut Option<FileIndex>) -> Option<PathBuf> {
+    let t = target.trim().replace('\\', "/");
+    if t.is_empty() || t.contains("..") {
+        return None;
+    }
+    if t.contains('/') {
+        if let Ok(p) = inside(root, &t) {
+            if p.is_file() && is_image(&p) {
+                return Some(p);
+            }
+        }
+    }
+    let name = t.rsplit('/').next().unwrap_or(&t).to_lowercase();
+    let stale = match idx {
+        Some(i) => i.root != root || i.built.elapsed() > Duration::from_secs(600),
+        None => true,
+    };
+    let rebuild = |idx: &mut Option<FileIndex>| {
+        let mut by_name = HashMap::new();
+        let mut count = 0;
+        index_walk(root, 0, &mut by_name, &mut count);
+        *idx = Some(FileIndex { root: root.to_path_buf(), built: Instant::now(), by_name });
+    };
+    if stale {
+        rebuild(idx);
+    }
+    let hit = idx.as_ref().and_then(|i| i.by_name.get(&name).cloned()).filter(|p| p.is_file());
+    if hit.is_some() {
+        return hit;
+    }
+    // A new attachment since the index was built: rebuild once (at most every 30 s).
+    if idx.as_ref().map(|i| i.built.elapsed() > Duration::from_secs(30)).unwrap_or(true) {
+        rebuild(idx);
+        return idx.as_ref().and_then(|i| i.by_name.get(&name).cloned());
+    }
+    None
+}
+
+/// Resolves cover images to files on this computer and lets the webview show just those files (asset protocol).
+/// Returns target → absolute path (missing = not found). Read-only.
+#[tauri::command]
+pub async fn vault_resolve_images(app: tauri::AppHandle, vault: String, targets: Vec<String>) -> Result<HashMap<String, String>, String> {
+    use tauri::Manager;
+    let root = PathBuf::from(vault.trim());
+    if vault.trim().is_empty() || !root.is_dir() {
+        return Ok(HashMap::new());
+    }
+    let found = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = INDEX.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = HashMap::new();
+        for t in targets.into_iter().take(500) {
+            if let Some(p) = resolve_one(&root, &t, &mut guard) {
+                out.insert(t, p);
+            }
+        }
+        out
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let scope = app.asset_protocol_scope();
+    let mut res = HashMap::new();
+    for (t, p) in found {
+        if scope.allow_file(&p).is_ok() {
+            res.insert(t, p.to_string_lossy().to_string());
+        }
+    }
+    Ok(res)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +445,15 @@ mod tests {
         assert_eq!(parse_frontmatter("# no frontmatter").unwrap(), Json::Null);
         assert!(parse_frontmatter("---\n: : bad\n  - x\n---\n").is_err());
         assert_eq!(parse_frontmatter("\u{feff}---\r\nstatus: x\r\n---\r\n").unwrap()["status"], "x");
+    }
+
+    #[test]
+    fn paths_stay_inside_the_vault() {
+        let root = Path::new("/v");
+        assert!(inside(root, "02_ACTIONS/PROJECTS.base").is_ok());
+        assert!(inside(root, "../x.base").is_err());
+        assert!(inside(root, "a/../../x.base").is_err());
+        assert_eq!(inside(root, "/x.base").unwrap(), root.join("x.base"));
+        assert!(inside(root, "").is_err());
     }
 }

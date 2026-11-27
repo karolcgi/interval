@@ -3,7 +3,7 @@
 // broadcasts and sends commands back. Neither runs a timer of its own; the clock is derived from the
 // snapshot's timestamps, so every window shows the same time.
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, ChevronDown, CornerDownLeft, Pause, Pin, PinOff, Play, Square, Trash2, X } from "lucide-react";
+import { AppWindow, Check, CheckCheck, ChevronDown, CornerDownLeft, ExternalLink, Pause, Pin, PinOff, Play, SkipForward, Square, Trash2, X } from "lucide-react";
 import { clockValue, isBreakStatus, progressValue, type TimerSnapshot } from "../domain/focus";
 import { fmtClock, fmtDuration } from "../domain/format";
 import { closeWindow, miniExpand, onSnapshot, popupFit, restoreMain, sendCommand, type TimerBroadcast } from "../timerBus";
@@ -118,6 +118,12 @@ export function MiniTimerApp() {
   );
   const onBreak = isBreakStatus(snap.status);
   // v0.9: Abandon on the main face too, behind the same confirm step as the edit view.
+  // v0.12: skip the break right after a focus round (or during it) and go straight into the next round.
+  const skipBreak = snap.kind !== "stopwatch" && ((snap.status === "completed" && snap.phase === "suggest") || snap.status === "short_break" || snap.status === "long_break" || snap.status === "break_paused") && (
+    <button className="mt-btn" onClick={() => send("skipBreak")} aria-label="Skip break" title="Skip break: start the next focus round">
+      <SkipForward size={11} />
+    </button>
+  );
   const abandon = !idle && snap.status !== "completed" && (
     <button className="mt-btn mt-bin" onClick={() => setAbandoning(true)} aria-label="Abandon" title={onBreak ? "Abandon this break (not recorded)" : "Abandon this session: nothing is recorded"}>
       <Trash2 size={11} />
@@ -164,6 +170,7 @@ export function MiniTimerApp() {
             </span>
             <span className="mt-actions">
               {toggle}
+              {skipBreak}
               {stop}
               {abandon}
             </span>
@@ -377,7 +384,7 @@ function MiniCategoryDropdown({ categories, value, onPick }: { categories: MiniC
 // ------------------------------------------------------------------------ completion popup
 
 /** What the popup offers after a focus round or a break ends. Shared by the popup window and the in-app card. */
-export function CompletionCard({ snap, send, onClose, annotate = false }: { snap: TimerSnapshot; send: (cmd: TimerCommand) => void; onClose: () => void; annotate?: boolean }) {
+export function CompletionCard({ snap, send, onClose, annotate = false, task }: { snap: TimerSnapshot; send: (cmd: TimerCommand) => void; onClose: () => void; annotate?: boolean; task?: { writeBack?: boolean; statuses?: Array<{ value: string; label: string; color: string | null }> } }) {
   const c = snap.completed;
   if (!c) return null;
   const afterFocus = c.phase === "focus";
@@ -412,6 +419,7 @@ export function CompletionCard({ snap, send, onClose, annotate = false }: { snap
               : `Next · ${snap.next ?? "focus"}`}
       </div>
       {afterFocus && annotate && <AnnotateBox key={c.runId} completed={c} send={send} />}
+      {afterFocus && snap.taskRef && <TaskActions key={c.runId} snap={snap} day={localDay(c.at)} send={send} writeBack={!!task?.writeBack} statuses={task?.statuses ?? []} />}
       <div className="cc-actions">
         {afterFocus ? (
           <>
@@ -424,6 +432,9 @@ export function CompletionCard({ snap, send, onClose, annotate = false }: { snap
                 Start break
               </button>
             )}
+            <button className="btn btn-outline sm" onClick={() => act("skipBreak")} title="No break: start the next focus round now">
+              Skip break
+            </button>
             <button className="btn btn-outline sm" onClick={() => act("extendFocus5")}>
               +5 min focus
             </button>
@@ -451,6 +462,64 @@ export function CompletionCard({ snap, send, onClose, annotate = false }: { snap
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function localDay(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * v0.12 (integration Phase 3): after a focus round about an Obsidian task. Leaving the task unchanged is the
+ * default (do nothing); completing it is always an explicit click, and a recurring task completes only this
+ * day's occurrence.
+ */
+function TaskActions({ snap, day, send, writeBack, statuses }: { snap: TimerSnapshot; day: string; send: (cmd: TimerCommand) => void; writeBack: boolean; statuses: Array<{ value: string; label: string; color: string | null }> }) {
+  const [done, setDone] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
+  const ref = snap.taskRef!;
+  return (
+    <div className="cc-task">
+      <div className="cc-task-head">
+        <span className="muted">Task</span> <span className="cc-task-title">{snap.taskTitle ?? ref}</span>
+      </div>
+      <div className="cc-task-actions">
+        {done ? (
+          <span className="cc-task-done" role="status">
+            <Check size={11} /> {done}
+          </span>
+        ) : (
+          <>
+            <span className="chip xs on" title="Default: nothing changes in Obsidian">
+              Leave unchanged
+            </span>
+            {writeBack && (
+              <button className="chip xs" onClick={() => (send({ type: "task", action: "complete", ref, day }), setDone("Marked completed"))}>
+                <CheckCheck size={10} /> Mark completed
+              </button>
+            )}
+          </>
+        )}
+        <button className="chip xs" onClick={() => send({ type: "task", action: "open", ref, day })}>
+          <ExternalLink size={10} /> Open in Obsidian
+        </button>
+        {writeBack && !done && statuses.length > 0 && (
+          <button className={`chip xs ${more ? "on" : ""}`} onClick={() => setMore(!more)} aria-expanded={more} title="Other statuses">
+            Status…
+          </button>
+        )}
+      </div>
+      {more && !done && (
+        <div className="cc-task-statuses">
+          {statuses.map((st) => (
+            <button key={st.value} className="chip xs" style={st.color ? { ["--sc" as string]: st.color } : undefined} onClick={() => (send({ type: "task", action: "status", ref, day, status: st.value }), setDone(st.label), setMore(false))}>
+              <span className="cc-sdot" /> {st.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -487,7 +556,7 @@ export function PopupApp() {
   if (!snap) return <div className="float-root popup" />;
   return (
     <div ref={root} className="float-root popup" style={{ ["--float-opacity" as string]: "1" }}>
-      <CompletionCard snap={snap} send={(cmd) => sendCommand(cmd, typeof cmd === "string" ? snap.rev : null)} onClose={close} annotate={snap.ui.annotate} />
+      <CompletionCard snap={snap} send={(cmd) => sendCommand(cmd, typeof cmd === "string" ? snap.rev : null)} onClose={close} annotate={snap.ui.annotate} task={{ writeBack: snap.ui.taskWriteBack, statuses: snap.ui.taskStatuses }} />
     </div>
   );
 }

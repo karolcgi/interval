@@ -19,6 +19,11 @@ export interface DayLogEntry {
   tags: string[];
   notes: string | null;
   sessionIds: Id[];
+  /** v0.12: the Obsidian task / project the session was about (vault paths + title snapshots). */
+  taskRef: string | null;
+  taskTitle: string | null;
+  projectRef: string | null;
+  projectTitle: string | null;
 }
 
 /** A diary note shown in the log at its time: floating-timer quick notes (v0.8) and the
@@ -73,9 +78,13 @@ export function buildDayLog(day: number, sessions: Session[], blocks: Block[], c
       tags: s.tagIds.map((id) => tagName.get(id)).filter((n): n is string => !!n),
       notes: s.notes?.trim() || null,
       sessionIds: [s.id],
+      taskRef: s.taskRef ?? null,
+      taskTitle: s.taskTitle ?? null,
+      projectRef: s.projectRef ?? null,
+      projectTitle: s.projectTitle ?? null,
     };
     const prev = entries[entries.length - 1];
-    if (prev && prev.title === e.title && prev.categoryId === e.categoryId && e.start - prev.end <= GAP_MERGE_MS && e.start >= prev.start) {
+    if (prev && prev.title === e.title && prev.categoryId === e.categoryId && prev.taskRef === e.taskRef && prev.projectRef === e.projectRef && e.start - prev.end <= GAP_MERGE_MS && e.start >= prev.start) {
       prev.end = Math.max(prev.end, e.end);
       prev.running = prev.running || e.running;
       prev.tags = [...new Set([...prev.tags, ...e.tags])];
@@ -102,6 +111,13 @@ export function buildDayLog(day: number, sessions: Session[], blocks: Block[], c
 export function dayLogItems(log: DayLog): Array<{ kind: "entry"; at: number; entry: DayLogEntry } | { kind: "note"; at: number; note: DayLogNote }> {
   const items = [...log.entries.map((entry) => ({ kind: "entry" as const, at: entry.start, entry })), ...log.notes.map((note) => ({ kind: "note" as const, at: note.at, note }))];
   return items.sort((a, b) => a.at - b.at || (a.kind === b.kind ? 0 : a.kind === "entry" ? -1 : 1));
+}
+
+/** An Obsidian link by full vault path (unambiguous), showing the title: [[Projects/Roger AMEX|Roger AMEX]]. */
+export function wikiLink(ref: string, title: string | null): string {
+  const target = ref.replace(/\.md$/i, "").replace(/[[\]|#^]/g, "");
+  const label = (title ?? target.split("/").pop() ?? target).replace(/[[\]|]/g, "");
+  return `[[${target}|${label}]]`;
 }
 
 /** Escape characters that would turn a title into Markdown formatting or a link. */
@@ -157,6 +173,8 @@ export function dayLogMarkdown(log: DayLog, opts: { timeFormat?: "24h" | "12h"; 
     const name = e.isBreak && e.title === e.categoryName ? mdText(e.title) : `**${mdText(e.title)}**`;
     const parts = [name];
     if (e.title !== e.categoryName) parts.push(mdText(e.categoryName));
+    if (e.projectRef) parts.push(wikiLink(e.projectRef, e.projectTitle));
+    if (e.taskRef && e.taskTitle !== e.title) parts.push(wikiLink(e.taskRef, e.taskTitle));
     if (e.tags.length) parts.push(e.tags.map((t) => `#${t.replace(/\s+/g, "-")}`).join(" "));
     parts.push(fmtDuration(e.end - e.start, { compact: true }));
     lines.push(`- ${time} ${parts.join(" · ")}`);

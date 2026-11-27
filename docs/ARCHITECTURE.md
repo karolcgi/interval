@@ -381,6 +381,32 @@ The full brief and phase plan: the technical assessment doc linked from PR #9.
 - Nothing here writes to TaskNotes or the vault (e2e asserts no non-GET calls besides `/api/tasks/query`).
 - Not yet: project cover thumbnails (needs a vault-scoped asset protocol), Planned-vs-actual removal (Phase 5).
 
+## v0.12 notes (TaskNotes statuses, Projects board, integration Phase 3)
+
+- **Statuses**: `GET /api/filter-options` gives TaskNotes' own statuses and priorities (value, label, colour, Lucide
+  icon, isCompleted, order). Cached as setting `integration.tnMeta`; TASKS are grouped by status by default, in
+  TaskNotes' order, with its colours/icons and a priority stripe. Icons outside the curated set come from one lazy
+  chunk with every Lucide icon (`ui/allIcons.ts`).
+- **Planned tasks leave TASKS**: a task with a PLAN block on the focused day is hidden (chip shows/hides them).
+- **Projects from a `.base`**: "Projects folder" accepts a vault-relative folder, a full path or a `.base` file.
+  With a `.base`, `vault_read_yaml` reads it, `domain/integration.ts › matchesBase` evaluates its filters over the
+  whole vault (unsupported expressions count as passing, and Test connection lists them), and its group-by /
+  image property / column and card order drive the Projects tab (setting `integration.board`).
+- **Projects tab** (`ui/ProjectsView.tsx`): read-only kanban. Covers resolve like Obsidian embeds
+  (`vault_resolve_images`: vault path, else unique file name) and are shown through the asset protocol; only the
+  resolved image files are added to its scope.
+- **Vault check**: `vault_probe` lists sub-folders that are vaults; Test connection offers the right folder when
+  the chosen one is a level too high. 401 explains that TaskNotes 5 rejects every request without a token.
+- **Phase 3**: migration 12 adds `sessions.task_ref/task_title/project_ref/project_title` (references + title
+  snapshots, follow TaskNotes uid renames). The focus target carries them (FocusState, snapshot); a block dragged
+  from a task links its task/project automatically. Pickers in the Focus panel, session details and Day log;
+  editing links never changes times. Day log Markdown links them by full path.
+- **Write-back** (explicit click only, setting `tasks.writeBack`): `completeTask` reads the task first; recurring →
+  `POST complete-instance {date}` only if that day isn't in `complete_instances`; otherwise `PUT {status}` with
+  TaskNotes' first completed status. `setTaskStatus` for the secondary menu. toggle-status is never used.
+- **Skip break** (`focus.skipBreakNow`): withdraws a break that auto-started under a minute ago, else records it
+  as skipped, then starts the next round. Mini timer zoom 1.125 (324×156 / 212×45).
+
 ## Roadmap notes
 
 Next: integration Phase 3 (task/project on sessions, explicit completion), Phase 4 (daily-note

@@ -5,6 +5,7 @@ import * as A from "../state/actions";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { PresetsView } from "./PresetsView";
+import { ProjectsView } from "./ProjectsView";
 import { TemplateView } from "./TemplateView";
 import { PresetDragChip } from "./PresetLibrary";
 import { FocusOfferCard } from "./FocusOffer";
@@ -73,6 +74,7 @@ export function App() {
           </div>
         )}
         {view === "calendar" && <CalendarView />}
+        {view === "projects" && <ProjectsView />}
         {view === "presets" && <PresetsView />}
         {view === "template" && <TemplateView />}
         {view === "stats" && <StatsView />}
@@ -253,7 +255,7 @@ function InAppCompletion() {
   const snap = currentSnapshot();
   return (
     <div className="in-app-completion">
-      <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} annotate={store.get().settings.annotatePrompt} />
+      <CompletionCard snap={snap} send={(cmd) => void F.runCommand(cmd, snap.rev).catch(A.reportError)} onClose={() => store.set({ completionPopup: null })} annotate={store.get().settings.annotatePrompt} task={{ writeBack: store.get().settings.integration.enabled && store.get().settings.integration.tasks.writeBack !== false, statuses: (store.get().extMeta?.statuses ?? []).filter((x) => !x.isCompleted) }} />
     </div>
   );
 }

@@ -185,6 +185,10 @@ function toSession(r: Row): Session {
     notes: str(r.notes),
     mode: String(r.mode) as SessionMode,
     tagIds: splitIds(r.tag_ids),
+    taskRef: str(r.task_ref),
+    taskTitle: str(r.task_title),
+    projectRef: str(r.project_ref),
+    projectTitle: str(r.project_title),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -222,12 +226,13 @@ export async function earliestRecord(db: DbDriver): Promise<number | null> {
 export function upsertSessionStmts(s: Session): Statement[] {
   return [
     {
-      sql: `INSERT INTO sessions (id, start_at, end_at, tz, category_id, block_id, title, notes, mode, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sql: `INSERT INTO sessions (id, start_at, end_at, tz, category_id, block_id, title, notes, mode, task_ref, task_title, project_ref, project_title, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET start_at=excluded.start_at, end_at=excluded.end_at, tz=excluded.tz,
               category_id=excluded.category_id, block_id=excluded.block_id, title=excluded.title, notes=excluded.notes,
-              mode=excluded.mode, updated_at=excluded.updated_at`,
-      params: [s.id, s.startAt, s.endAt, s.tz, s.categoryId, s.blockId, s.title, s.notes, s.mode, s.createdAt, s.updatedAt],
+              mode=excluded.mode, task_ref=excluded.task_ref, task_title=excluded.task_title, project_ref=excluded.project_ref,
+              project_title=excluded.project_title, updated_at=excluded.updated_at`,
+      params: [s.id, s.startAt, s.endAt, s.tz, s.categoryId, s.blockId, s.title, s.notes, s.mode, s.taskRef ?? null, s.taskTitle ?? null, s.projectRef ?? null, s.projectTitle ?? null, s.createdAt, s.updatedAt],
     },
     { sql: "DELETE FROM session_tags WHERE session_id = ?", params: [s.id] },
     ...s.tagIds.map((t) => ({ sql: "INSERT OR IGNORE INTO session_tags (session_id, tag_id) VALUES (?, ?)", params: [s.id, t] })),
@@ -740,6 +745,34 @@ export function followRenamedTaskStmt(uid: string, ref: string): Statement {
           AND source_ref IN (SELECT e.ref FROM ext_items e WHERE e.kind = 'task' AND e.uid = ? AND e.ref <> ?)`,
     params: [ref, ref, uid, ref],
   };
+}
+
+/** Sessions follow a task renamed/moved in Obsidian too (same TaskNotes uid under a new path). */
+export function followRenamedTaskInSessionsStmt(uid: string, ref: string): Statement {
+  return {
+    sql: `UPDATE sessions SET task_ref = ? WHERE task_ref IS NOT NULL AND task_ref <> ?
+          AND task_ref IN (SELECT e.ref FROM ext_items e WHERE e.kind = 'task' AND e.uid = ? AND e.ref <> ?)`,
+    params: [ref, ref, uid, ref],
+  };
+}
+
+/** Keeps the title snapshots on sessions current while their task/project still exists. */
+export function snapshotSessionTitlesStmts(): Statement[] {
+  return (["task", "project"] as const).map((k) => ({
+    sql: `UPDATE sessions SET ${k}_title = (SELECT e.title FROM ext_items e WHERE e.kind = '${k}' AND e.ref = sessions.${k}_ref)
+          WHERE ${k}_ref IS NOT NULL AND EXISTS (SELECT 1 FROM ext_items e WHERE e.kind = '${k}' AND e.ref = sessions.${k}_ref
+            AND e.gone_at IS NULL AND e.title IS NOT COALESCE(sessions.${k}_title, ''))`,
+  }));
+}
+
+/** Recorded time and session count per project (v0.12 Projects board). */
+export async function projectTotals(db: DbDriver): Promise<Map<string, { ms: number; sessions: number; last: number }>> {
+  const rows = await db.select<Row>(
+    `SELECT project_ref AS ref, SUM(COALESCE(end_at, ?) - start_at) AS ms, COUNT(*) AS n, MAX(start_at) AS last
+     FROM sessions WHERE project_ref IS NOT NULL GROUP BY project_ref`,
+    [Date.now()],
+  );
+  return new Map(rows.map((r) => [String(r.ref), { ms: Number(r.ms) || 0, sessions: Number(r.n) || 0, last: Number(r.last) || 0 }]));
 }
 
 /** Copies the current title of each live source onto the PLAN blocks that reference it (when it changed). */

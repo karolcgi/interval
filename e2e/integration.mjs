@@ -16,10 +16,10 @@ mkdirSync(OUT, { recursive: true });
 
 const TOKEN = "test-token";
 const tasks = [
-  { path: "TaskNotes/Particle lesson.md", title: "Particle simulation lesson", status: "open", scheduled: "2026-11-27", projects: ["[[Learning Houdini]]"], customProperties: { taskType: "Study" } },
-  { path: "TaskNotes/Camera moves.md", title: "Camera movements", status: "open", due: "2026-11-28", projects: ["[[Roger AMEX]]"], customProperties: { taskType: "Deep Work" } },
-  { path: "TaskNotes/Driving lesson.md", title: "Driving lesson", status: "open", scheduled: "2026-11-29T10:00", customProperties: { taskType: "Scheduled Event" } },
-  { path: "TaskNotes/Inbox zero.md", title: "Process inbox", status: "open", customProperties: { taskType: "Inbox" } },
+  { path: "TaskNotes/Particle lesson.md", title: "Particle simulation lesson", status: "study", scheduled: "2026-11-27", projects: ["[[Learning Houdini]]"], customProperties: { taskType: "Study" } },
+  { path: "TaskNotes/Camera moves.md", title: "Camera movements", status: "deep work", priority: "p1", due: "2026-11-28", projects: ["[[Roger AMEX]]"], customProperties: { taskType: "Deep Work" } },
+  { path: "TaskNotes/Driving lesson.md", title: "Driving lesson", status: "event", scheduled: "2026-11-29T10:00", customProperties: { taskType: "Scheduled Event" } },
+  { path: "TaskNotes/Inbox zero.md", title: "Process inbox", status: "inbox", customProperties: { taskType: "Inbox" } },
 ];
 const calls = [];
 let up = true;
@@ -40,7 +40,21 @@ const api = createServer((req, res) => {
       const done = q.children.some((c) => c.operator === "is-checked");
       return send(200, { success: true, data: { tasks: done ? [] : tasks } });
     }
-    if (req.url === "/api/filter-options") return send(200, { success: true, data: { userProperties: [{ id: "taskType", frontmatterKey: "taskType" }] } });
+    if (req.url === "/api/filter-options")
+      return send(200, {
+        success: true,
+        data: {
+          userProperties: [{ id: "taskType", frontmatterKey: "taskType" }],
+          statuses: [
+            { value: "inbox", label: "INBOX", color: "#e3e3e3", isCompleted: false, order: 0 },
+            { value: "deep work", label: "DEEP WORK", color: "#db7a18", isCompleted: false, order: 2, icon: "lucide-badge-check" },
+            { value: "event", label: "SCHEDULED EVENT", color: "#732a78", isCompleted: false, order: 4 },
+            { value: "study", label: "STUDY", color: "#6366f1", isCompleted: false, order: 6, icon: "lucide-book-open" },
+            { value: "done", label: "DONE", color: "#00aa00", isCompleted: true, order: 10 },
+          ],
+          priorities: [{ value: "p1", label: "90 - IMMEDIATE", color: "#fc0303", weight: 4 }],
+        },
+      });
     send(404, { success: false, error: "Not found" });
   });
 });
@@ -130,6 +144,9 @@ try {
   await dropTask("Camera movements", 10 * 60);
   await page.waitForTimeout(200);
   await expect(blocksNamed("Camera movements").count().then((n) => n === 1), "Dragging a task onto Today creates a PLAN block at once (no dialog)");
+  await expect(tasksSec.locator(".ext-row", { hasText: "Camera movements" }).count().then((n) => n === 0), "v0.12: a task on today's plan leaves the TASKS list");
+  await tasksSec.getByTitle("Show the tasks already on today's plan").click();
+  await expect(tasksSec.locator(".ext-row.planned", { hasText: "Camera movements" }).isVisible(), "…and comes back (dimmed) with the 'on plan' chip");
   await dropTask("Camera movements", 14 * 60);
   await page.waitForTimeout(200);
   await expect(blocksNamed("Camera movements").count().then((n) => n === 2), "The same task can be dropped again");
@@ -143,6 +160,26 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll(".tl-col .block")].some((b) => b.textContent.includes("Camera movements v2")));
   ok("A task renamed in Obsidian renames its PLAN block");
   await page.screenshot({ path: new URL("integration-today.png", OUT).pathname });
+
+  // ---- v0.12: grouped and coloured by TaskNotes status
+  await tasksSec.getByLabel("Group tasks by").selectOption("status");
+  await expect(tasksSec.locator(".ext-group-head", { hasText: "DEEP WORK" }).isVisible(), "v0.12: tasks grouped by TaskNotes status, with TaskNotes' labels");
+  const heads = await tasksSec.locator(".ext-group-label").allTextContents();
+  await expect(heads.join("|") === "INBOX|DEEP WORK|SCHEDULED EVENT|STUDY", `…in TaskNotes' order (${heads.join("|")})`);
+  const icoColor = await tasksSec.locator(".ext-group-head", { hasText: "DEEP WORK" }).locator(".ext-status-ico").evaluate((e) => getComputedStyle(e).color);
+  await expect(icoColor === "rgb(219, 122, 24)", "…coloured with the status colour");
+  await tasksSec.locator(".ext-group-head", { hasText: "INBOX" }).click();
+  await expect(tasksSec.locator(".ext-row", { hasText: "Process inbox" }).count().then((n) => n === 0), "Groups collapse");
+  await tasksSec.locator(".ext-group-head", { hasText: "INBOX" }).click();
+  await page.locator(".sidebar").screenshot({ path: new URL("v12-tasks-by-status.png", OUT).pathname });
+
+  // ---- v0.12 / Phase 3: optional task on the focus timer
+  const panel = page.locator(".focus-panel");
+  await panel.getByLabel("Task: none").click();
+  await panel.getByRole("option", { name: /Particle simulation lesson/ }).click();
+  await expect(panel.getByLabel(/^Task: Particle simulation lesson/).isVisible(), "Focus timer: a task can be picked (optional)");
+  await expect(panel.locator(".ftp-cat-name").textContent().then((t) => t === "Studying"), "…which suggests a matching activity (STUDY → Studying)");
+  await panel.screenshot({ path: new URL("v12-focus-task.png", OUT).pathname });
 
   await nav(page, "Settings");
   await page.getByRole("tab", { name: "Obsidian" }).click();

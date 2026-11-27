@@ -110,6 +110,11 @@ export interface Session {
   notes: string | null;
   mode: SessionMode;
   tagIds: Id[];
+  /** v0.12 (integration Phase 3): optional Obsidian task / project (vault paths) with title snapshots. */
+  taskRef?: string | null;
+  taskTitle?: string | null;
+  projectRef?: string | null;
+  projectTitle?: string | null;
   createdAt: number;
   updatedAt: number;
 }

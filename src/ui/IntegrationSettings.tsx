@@ -6,6 +6,7 @@ import * as A from "../state/actions";
 import { isTauri, openExternal, pickDirectory } from "../platform";
 import {
   obsidianUri,
+  projectSource,
   vaultNameOf,
   type ExtProject,
   type ExtTask,
@@ -104,7 +105,7 @@ export function IntegrationSettings() {
     <>
       <h2 className="section-title">Obsidian &amp; TaskNotes</h2>
       <div className="settings-block">
-        <Row label="Connect to my vault" hint="Shows your Obsidian projects and TaskNotes tasks in Interval. Read-only: Interval never changes your notes or tasks. Everything keeps working without it.">
+        <Row label="Connect to my vault" hint="Shows your Obsidian projects and TaskNotes tasks in Interval. Interval never changes your notes; it changes a task only when you click “Mark task completed” after a session. Everything keeps working without it.">
           <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} aria-label="Enable Obsidian integration" />
           {c.enabled && (
             <span className="sync-status">
@@ -124,7 +125,7 @@ export function IntegrationSettings() {
               )}
               <TextSetting label="Vault name" value={c.vaultName} placeholder={vault || "Vault name"} width={140} onSave={(vaultName) => save({ vaultName })} />
             </Row>
-            <Row label="TaskNotes API" hint="TaskNotes › Settings › HTTP API. Turn it on there, then paste the address and the token. Only addresses on this computer are allowed.">
+            <Row label="TaskNotes API" hint="Obsidian › Settings › TaskNotes › Integrations › HTTP API. Turn it on there, then paste the address and the API token. TaskNotes 5 rejects every request without the token. Only addresses on this computer are allowed.">
               <TextSetting label="TaskNotes API address" value={c.apiUrl} placeholder="http://localhost:8080" width={180} onSave={(apiUrl) => save({ apiUrl: apiUrl || "http://localhost:8080" })} />
               <input
                 className="field sm"
@@ -156,7 +157,7 @@ export function IntegrationSettings() {
                 <RefreshCw size={13} /> Refresh
               </button>
             </Row>
-            {report && <ReportView r={report} />}
+            {report && <ReportView r={report} onUseVault={(vaultPath) => (save({ vaultPath }), setReport(null))} />}
 
             <button className="set-disclosure" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
               {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Mappings
@@ -171,10 +172,19 @@ export function IntegrationSettings() {
                   {["projects", "contexts", "tags", "priority", "status", ...(report?.fields ?? [])].map((f) => <option key={f} value={f} />)}
                 </datalist>
                 <h3 className="set-sub">Projects</h3>
-                <Row label="Projects folder" hint="Inside the vault, subfolders included. Leave empty for the whole vault.">
-                  <TextSetting label="Projects folder" value={c.projects.folder} placeholder="Projects" onSave={(folder) => saveP({ folder })} />
+                <Row label="Projects folder" hint="A folder inside the vault (subfolders included; empty = whole vault), a full path, or your projects .base file. With a .base, its filters pick the projects from the whole vault, like your Bases board, and the board's columns and cover property are used.">
+                  <TextSetting
+                    label="Projects folder"
+                    value={c.projects.folder}
+                    placeholder="02_ACTIONS/02_PROJECTS/PROJECTS.base"
+                    width={300}
+                    onSave={(v) => {
+                      const src = projectSource(v, c.vaultPath);
+                      saveP({ folder: src.base ?? src.folder });
+                    }}
+                  />
                 </Row>
-                <Row label="A note is a project when" hint="Every note in the folder, or only notes with a tag or property.">
+                {projectSource(c.projects.folder, c.vaultPath).base ? null : <Row label="A note is a project when" hint="Every note in the folder, or only notes with a tag or property.">
                   <select className="select sm" value={c.projects.rule} onChange={(e) => saveP({ rule: e.target.value as ProjectMapping["rule"] })} aria-label="Project rule">
                     <option value="folder">it's in the folder</option>
                     <option value="tag">it has the tag</option>
@@ -188,8 +198,8 @@ export function IntegrationSettings() {
                       <TextSetting label="Value" value={c.projects.ruleValue} placeholder="any value" width={120} onSave={(ruleValue) => saveP({ ruleValue })} />
                     </>
                   )}
-                </Row>
-                <Row label="Properties" hint="Property names in your project notes. Title empty = the file name.">
+                </Row>}
+                <Row label="Properties" hint="Property names in your project notes. Title empty = the file name. With a .base file, Status and Cover default to the board's group-by and image properties.">
                   <div className="map-grid">
                     {(
                       [
@@ -229,6 +239,9 @@ export function IntegrationSettings() {
                     </label>
                   </div>
                 </Row>
+                <Row label="Complete tasks from Interval" hint="After a focus session about a task, offer “Mark task completed” and other statuses. Only ever on your click; a recurring task completes just that day's occurrence.">
+                  <input type="checkbox" checked={c.tasks.writeBack !== false} onChange={(e) => saveT({ writeBack: e.target.checked })} aria-label="Allow completing tasks from Interval" />
+                </Row>
                 <Row label="Completed statuses" hint="Used only when TaskNotes doesn't say itself whether a status means done (comma-separated).">
                   <TextSetting label="Completed statuses" value={c.tasks.completedStatuses.join(", ")} placeholder="done" onSave={(v) => saveT({ completedStatuses: v.split(",").map((x) => x.trim()).filter(Boolean) })} />
                 </Row>
@@ -249,7 +262,7 @@ export function IntegrationSettings() {
   );
 }
 
-function ReportView({ r }: { r: ConnectionReport }) {
+function ReportView({ r, onUseVault }: { r: ConnectionReport; onUseVault: (p: string) => void }) {
   return (
     <div className={`conn-report ${r.ok ? "ok" : "bad"}`} role="status">
       {r.ok ? (
@@ -266,6 +279,11 @@ function ReportView({ r }: { r: ConnectionReport }) {
           {p}
         </div>
       ))}
+      {r.vaultFix && (
+        <button className="btn btn-outline sm" onClick={() => onUseVault(r.vaultFix!)}>
+          Use {r.vaultFix}
+        </button>
+      )}
     </div>
   );
 }

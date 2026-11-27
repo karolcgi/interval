@@ -96,7 +96,10 @@ pub fn run() {
             obsidian::tn_request,
             obsidian::tn_token_set,
             obsidian::tn_token_status,
-            obsidian::vault_scan
+            obsidian::vault_scan,
+            obsidian::vault_read_yaml,
+            obsidian::vault_probe,
+            obsidian::vault_resolve_images
         ])
         .run(tauri::generate_context!())
         .expect("error while running Interval");

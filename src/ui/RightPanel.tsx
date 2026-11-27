@@ -8,6 +8,8 @@ import { store, useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as L from "../state/library";
 import * as repo from "../db/repo";
+import * as F from "../state/focus";
+import { SessionLinks } from "./SessionLinks";
 import type { Block, Session } from "../domain/types";
 import { atMinute, isSameDay, startOfDay } from "../domain/time";
 import { fmt, fmtClock, fmtDuration, fmtTime } from "../domain/format";
@@ -424,6 +426,7 @@ function BlockInspector({ block }: { block: Block }) {
 }
 
 function SessionInspector({ session }: { session: Session }) {
+  const obsidianOn = useApp((s) => s.settings.integration.enabled);
   const categories = useApp((s) => s.categories);
   const blocks = useApp((s) => s.blocks);
   const now = useNow(1000);
@@ -466,6 +469,20 @@ function SessionInspector({ session }: { session: Session }) {
             {blockName(block, categories.find((c) => c.id === block.categoryId)?.name)} · {fmtTime(block.startAt)}–{fmtTime(block.endAt)}
           </button>
         </p>
+      )}
+      {obsidianOn && (
+        <>
+          <label className="insp-label">Task &amp; project</label>
+          <SessionLinks
+            className="insp-links"
+            value={session}
+            onChange={({ categoryId, ...links }) => {
+              // The running session follows the timer's target; a recorded one is edited in place. Times never change.
+              if (running) void F.setTarget({ ...links, ...(categoryId ? { categoryId } : {}) }).catch(A.reportError);
+              else upd({ ...links, ...(categoryId && categoryId !== session.categoryId ? { categoryId } : {}) }, "Link task or project");
+            }}
+          />
+        </>
       )}
       <label className="insp-label">Tags</label>
       <TagInput value={session.tagIds} onChange={(tagIds) => upd({ tagIds }, "Change tags")} />

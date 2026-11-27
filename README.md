@@ -137,6 +137,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap-notes).
 - **Today's time and Planned vs actual moved to the bottom of the left sidebar.** The right panel's freed room is kept for a future task inbox (Obsidian / Google Calendar).
 - **Short sessions show their title** in the Actual lane on one line, e.g. "Setup · 25m".
 
+## v0.12 status (TaskNotes statuses, Projects board, sessions ↔ tasks)
+
+- TASKS grouped and coloured by TaskNotes status (its labels, colours, icons and order); tasks on today's plan leave the list.
+- Projects tab: read-only kanban by project status with covers, from a folder or your projects `.base` file.
+- Optional task / project on focus sessions; edit them later from session details or the Day log.
+- After a session about a task: Leave unchanged (default), Mark task completed, Open in Obsidian, other statuses.
+- Skip break after a focus round; floating timer 10% smaller.
+
 ## Install (normal use)
 
 1. Open the repository's **Releases** page on GitHub and download `Interval_<version>_x64-setup.exe`.
