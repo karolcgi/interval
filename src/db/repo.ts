@@ -125,6 +125,9 @@ function toBlock(r: Row): Block {
     templateBlockId: str(r.template_block_id),
     icon: str(r.icon),
     color: str(r.color),
+    sourceKind: (str(r.source_kind) as Block["sourceKind"]) ?? null,
+    sourceRef: str(r.source_ref),
+    sourceTitle: str(r.source_title),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -148,13 +151,14 @@ export async function getBlock(db: DbDriver, id: Id): Promise<Block | null> {
 export function upsertBlockStmts(b: Block): Statement[] {
   return [
     {
-      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, preset_id, template_block_id, icon, color, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sql: `INSERT INTO blocks (id, start_at, end_at, tz, category_id, title, notes, link, status, recurrence_id, preset_id, template_block_id, icon, color, created_at, updated_at, source_kind, source_ref, source_title)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET start_at=excluded.start_at, end_at=excluded.end_at, tz=excluded.tz,
               category_id=excluded.category_id, title=excluded.title, notes=excluded.notes, link=excluded.link,
               status=excluded.status, recurrence_id=excluded.recurrence_id, preset_id=excluded.preset_id,
-              template_block_id=excluded.template_block_id, icon=excluded.icon, color=excluded.color, updated_at=excluded.updated_at`,
-      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.presetId ?? null, b.templateBlockId ?? null, b.icon ?? null, b.color ?? null, b.createdAt, b.updatedAt],
+              template_block_id=excluded.template_block_id, icon=excluded.icon, color=excluded.color, updated_at=excluded.updated_at,
+              source_kind=excluded.source_kind, source_ref=excluded.source_ref, source_title=excluded.source_title`,
+      params: [b.id, b.startAt, b.endAt, b.tz, b.categoryId, b.title, b.notes, b.link, b.status, b.recurrenceId, b.presetId ?? null, b.templateBlockId ?? null, b.icon ?? null, b.color ?? null, b.createdAt, b.updatedAt, b.sourceKind ?? null, b.sourceRef ?? null, b.sourceTitle ?? null],
     },
     { sql: "DELETE FROM block_tags WHERE block_id = ?", params: [b.id] },
     ...b.tagIds.map((t) => ({ sql: "INSERT OR IGNORE INTO block_tags (block_id, tag_id) VALUES (?, ?)", params: [b.id, t] })),
@@ -727,4 +731,22 @@ export function markExtGoneStmt(kind: "task" | "project", since: number, now: nu
 /** Marks seen without changing the cached data (project note unchanged since the last scan). */
 export function touchExtItemStmt(kind: "task" | "project", ref: string, now: number): Statement {
   return { sql: "UPDATE ext_items SET seen_at = ?, gone_at = NULL WHERE kind = ? AND ref = ?", params: [now, kind, ref] };
+}
+
+/** Points PLAN blocks at a task's new path when the same TaskNotes uid shows up under another path. */
+export function followRenamedTaskStmt(uid: string, ref: string): Statement {
+  return {
+    sql: `UPDATE blocks SET source_ref = ? WHERE source_kind = 'task' AND source_ref <> ?
+          AND source_ref IN (SELECT e.ref FROM ext_items e WHERE e.kind = 'task' AND e.uid = ? AND e.ref <> ?)`,
+    params: [ref, ref, uid, ref],
+  };
+}
+
+/** Copies the current title of each live source onto the PLAN blocks that reference it (when it changed). */
+export function snapshotSourceTitlesStmt(): Statement {
+  return {
+    sql: `UPDATE blocks SET source_title = (SELECT e.title FROM ext_items e WHERE e.kind = blocks.source_kind AND e.ref = blocks.source_ref)
+          WHERE source_ref IS NOT NULL AND EXISTS (SELECT 1 FROM ext_items e WHERE e.kind = blocks.source_kind AND e.ref = blocks.source_ref
+            AND e.gone_at IS NULL AND e.title IS NOT COALESCE(blocks.source_title, ''))`,
+  };
 }

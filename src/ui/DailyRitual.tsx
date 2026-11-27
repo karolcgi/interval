@@ -1,6 +1,7 @@
 // Optional daily ritual: a few minutes of morning planning and evening review.
 // Nothing here is mandatory; closing the panel never loses anything.
 
+import { blockName } from "../state/blockName";
 import { useEffect, useMemo, useState } from "react";
 import { Ban, Check, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
@@ -197,7 +198,7 @@ function BlockLine({ b, cat, actions }: { b: Block; cat?: Category; actions?: Re
       <span className="rbk-time">
         {fmtTime(b.startAt)}–{fmtTime(b.endAt)}
       </span>
-      <span className="rbk-name">{b.title || cat?.name}</span>
+      <span className="rbk-name">{blockName(b, cat?.name)}</span>
       {b.title && <span className="muted small">{cat?.name}</span>}
       <span className="spacer" />
       {actions}

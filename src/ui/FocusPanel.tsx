@@ -1,5 +1,6 @@
 // Docked focus timer in the sidebar, under Activities. Renders the shared timer; every action goes
 // through the engine (state/focus.ts), exactly like the tray, the floating timer and the popup.
+import { blockName } from "../state/blockName";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChevronDown, Link2, Trash2, PictureInPicture2, Play, Pause, RotateCcw, Settings2, SkipForward, Square, Unlink, X } from "lucide-react";
 import { store, useApp, useNow } from "../state/store";
@@ -162,7 +163,7 @@ export function FocusPanel() {
                 <div className="ftp-block" title="Time will be recorded against this planned block">
                   <Link2 size={12} />
                   <span className="ftp-block-name">
-                    {linked.block.title || categories.find((c) => c.id === linked.block.categoryId)?.name}
+                    {blockName(linked.block, categories.find((c) => c.id === linked.block.categoryId)?.name)}
                     <span className="muted">
                       {" "}
                       {linked.when === "soon" ? "starts" : ""} {fmtTime(linked.block.startAt, settings.timeFormat)}–{fmtTime(linked.block.endAt, settings.timeFormat)}
@@ -175,7 +176,7 @@ export function FocusPanel() {
               ) : (
                 suggestion && (
                   <button className="link small ftp-relink" onClick={() => (setLinkOff(null), setManualCat(null))}>
-                    <Link2 size={11} /> Link “{suggestion.block.title || categories.find((c) => c.id === suggestion.block.categoryId)?.name}”
+                    <Link2 size={11} /> Link “{blockName(suggestion.block, categories.find((c) => c.id === suggestion.block.categoryId)?.name)}”
                   </button>
                 )
               )}

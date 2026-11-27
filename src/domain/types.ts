@@ -53,6 +53,12 @@ export interface Block {
   /** Own icon and colour (v0.8), copied from a preset; null = the category's. */
   icon?: string | null;
   color?: string | null;
+  /** v0.11: the Obsidian task or project it was dragged from (vault path). Purely a reference: the block never
+   *  changes the task. `title` stays the local override; null = show the live title (else `sourceTitle`). */
+  sourceKind?: "task" | "project" | null;
+  sourceRef?: string | null;
+  /** Last known title of the source, kept so the block stays readable if the note is renamed away or deleted. */
+  sourceTitle?: string | null;
   createdAt: number;
   updatedAt: number;
 }

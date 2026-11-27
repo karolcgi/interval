@@ -1,5 +1,6 @@
 // Main-window wiring of the focus timer: the engine's clock, the broadcast to the floating windows and
 // the tray, commands coming back, sounds/notifications/popup, shell preferences and global shortcuts.
+import { blockTitle } from "../state/blockName";
 import { useEffect } from "react";
 import { store, useApp, type AppState } from "../state/store";
 import * as A from "../state/actions";
@@ -53,7 +54,7 @@ export function currentSnapshot(s: AppState = store.get()): TimerSnapshot {
     categories: s.categories,
     blockTitle: (id) => {
       const b = blocks.find((x) => x.id === id);
-      return b ? (b.title ?? s.categories.find((c) => c.id === b.categoryId)?.name ?? null) : null;
+      return b ? (blockTitle(b) ?? s.categories.find((c) => c.id === b.categoryId)?.name ?? null) : null;
     },
   });
 }

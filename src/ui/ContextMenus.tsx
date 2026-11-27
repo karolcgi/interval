@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, BookmarkPlus, Check, Pencil, Repeat, ChevronRight, Combine, Copy, CopyPlus, RotateCcw, Scissors, Trash2, CalendarPlus, LayoutTemplate } from "lucide-react";
+import { Ban, BookmarkPlus, Check, Pencil, Repeat, ChevronRight, Combine, Copy, CopyPlus, RotateCcw, Scissors, Trash2, CalendarPlus, LayoutTemplate, ExternalLink } from "lucide-react";
 import * as L from "../state/library";
 import { WEEKDAY_NAMES } from "../domain/weekTemplate";
 import { store, useApp } from "../state/store";
@@ -90,6 +90,13 @@ export function ItemContextMenu(p: Props) {
           )}
           <MenuItem icon={<Combine size={13} />} label="Merge with adjacent" disabled={!mergeWith} onClick={run(() => A.mergeBlock(block.id))} />
           <MenuItem icon={<BookmarkPlus size={13} />} label="Save as preset" onClick={run(() => L.saveBlockAsPreset(block))} />
+          {block.sourceRef && (
+            <MenuItem
+              icon={<ExternalLink size={13} />}
+              label={`Open ${block.sourceKind === "project" ? "project" : "task"} in Obsidian`}
+              onClick={run(() => import("./ObsidianSidebar").then((m) => m.openInObsidian(block.sourceRef!)))}
+            />
+          )}
           {block.templateBlockId && <MenuItem icon={<LayoutTemplate size={13} />} label="Edit original in Template" onClick={run(() => L.openInTemplate(block.templateBlockId!))} />}
         </>
       )}

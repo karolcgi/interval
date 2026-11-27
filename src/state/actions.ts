@@ -452,7 +452,7 @@ export async function duplicateBlock(id: Id, dayOffset = 0) {
   if (!b) return;
   const dur = b.endAt - b.startAt;
   const start = dayOffset === 0 ? b.endAt : shiftDaysKeepClock(b.startAt, dayOffset);
-  const copy = newBlock({ start, end: start + dur }, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null });
+  const copy = newBlock({ start, end: start + dur }, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null, sourceKind: b.sourceKind ?? null, sourceRef: b.sourceRef ?? null, sourceTitle: b.sourceTitle ?? null });
   await commit(dayOffset === 0 ? "Duplicate block" : "Duplicate to another day", [{ type: "block", before: null, after: copy }]);
   store.set({ selection: { kind: "block", id: copy.id } });
 }
@@ -463,7 +463,7 @@ export async function splitBlock(id: Id, at?: number) {
   const point = at ?? splitPoint({ start: b.startAt, end: b.endAt }, store.get().settings.snapMinutes);
   const parts = splitInterval({ start: b.startAt, end: b.endAt }, point);
   if (!parts) return toast("Block is too short to split there");
-  const second = newBlock(parts[1], b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null, status: b.status === "in_progress" ? "planned" : b.status });
+  const second = newBlock(parts[1], b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null, sourceKind: b.sourceKind ?? null, sourceRef: b.sourceRef ?? null, sourceTitle: b.sourceTitle ?? null, status: b.status === "in_progress" ? "planned" : b.status });
   await commit("Split block", [
     { type: "block", before: b, after: { ...b, endAt: parts[0].end, updatedAt: Date.now() } },
     { type: "block", before: null, after: second },
@@ -500,7 +500,7 @@ export async function pasteBlocks(targetDay = store.get().date) {
   const changes: Change[] = clipboard.map((b) => {
     const offsetDays = Math.round((startOfDay(targetDay) - startOfDay(b.startAt)) / 86_400_000);
     const start = shiftDaysKeepClock(b.startAt, offsetDays);
-    return { type: "block", before: null, after: newBlock({ start, end: start + (b.endAt - b.startAt) }, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }) };
+    return { type: "block", before: null, after: newBlock({ start, end: start + (b.endAt - b.startAt) }, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null, sourceKind: b.sourceKind ?? null, sourceRef: b.sourceRef ?? null, sourceTitle: b.sourceTitle ?? null }) };
   });
   await commit(changes.length === 1 ? "Paste block" : `Paste ${changes.length} blocks`, changes);
 }

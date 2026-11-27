@@ -30,6 +30,7 @@ import { ItemContextMenu, TemplateBlockMenu } from "./ContextMenus";
 import * as L from "../state/library";
 import { REF_WEEK, suggestionsForDay, toRefBlock, WEEKDAY_NAMES, weekdayOf, type Suggestion } from "../domain/weekTemplate";
 import { registerDropTarget } from "./presetDrag";
+import { blockLabel } from "../domain/integration";
 
 type Lane = "plan" | "actual";
 
@@ -148,9 +149,15 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
     () =>
       registerDropTarget({
         hit: (x, y) => dropRef.current(x, y) !== null,
-        drop: (x, y, presetId) => {
+        drop: (x, y, presetId, item) => {
           const d = dropRef.current(x, y);
           if (!d) return;
+          if (item) {
+            // Activities, tasks and projects go on PLAN only; the weekly template stays preset-based.
+            if (!tpl) L.dropItemOnDay(item, d.start).catch(A.reportError);
+            return;
+          }
+          if (!presetId) return;
           (tpl ? L.dropPresetOnTemplate(presetId, d.start) : L.dropPresetOnDay(presetId, d.start)).catch(A.reportError);
         },
       }),
@@ -158,6 +165,13 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
   );
   const dropPreview = useMemo(() => {
     if (!presetDrag) return null;
+    const it = presetDrag.item;
+    if (it) {
+      const d = tpl ? null : dropAt(presetDrag.x, presetDrag.y);
+      if (!d) return null;
+      const mins = it.minutes || settings.defaultBlockMinutes || 60;
+      return { day: d.day, iv: { start: d.start, end: d.start + mins * 60_000 }, label: it.label, color: it.color ?? "#8a8b91" };
+    }
     const p = presets.find((x) => x.id === presetDrag.presetId);
     const d = dropAt(presetDrag.x, presetDrag.y);
     if (!p || !d) return null;
@@ -316,7 +330,7 @@ export function Timeline({ days, mode = "calendar" }: { days: number[]; mode?: "
         } else if (d.lane === "plan") {
           if (d.copy) {
             const b = store.get().blocks.find((x) => x.id === d.id);
-            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null }).catch(A.reportError);
+            if (b) void A.createBlock(iv, b.categoryId, { title: b.title, notes: b.notes, link: b.link, tagIds: b.tagIds, presetId: b.presetId ?? null, icon: b.icon ?? null, color: b.color ?? null, sourceKind: b.sourceKind ?? null, sourceRef: b.sourceRef ?? null, sourceTitle: b.sourceTitle ?? null }).catch(A.reportError);
           } else void A.updateBlock(d.id, { startAt: iv.start, endAt: iv.end }, "Move block").catch(A.reportError);
         } else {
           const s = store.get().sessions.find((x) => x.id === d.id);
@@ -715,14 +729,17 @@ function BlockView(p: {
   const cat = p.catById.get(b.categoryId);
   const { color, icon } = lookOf(b, cat);
   const tagNames = b.tagIds.map((t) => p.tagById.get(t)?.name).filter(Boolean) as string[];
-  const label = b.title || cat?.name || "Untitled";
+  // v0.11: a block dragged from an Obsidian task/project shows the live title unless renamed here.
+  const src = useApp((s) => (b.sourceRef ? (b.sourceKind === "project" ? s.extProjects : s.extTasks).find((x) => x.ref === b.sourceRef) : undefined));
+  const label = blockLabel(b, src?.title, cat?.name || "Untitled");
+  const srcDone = b.sourceKind === "task" && !!src && !src.active;
   const timeLabel = `${fmtTime(b.startAt)} – ${fmtTime(b.endAt)}`;
   const tiny = p.pos.height < 30;
   const isPast = !p.tpl && b.endAt <= p.now;
   const subtitle = [b.title && cat ? cat.name : null, tagNames.join(", ") || null].filter(Boolean).join(" · ");
   return (
     <div
-      className={`block status-${b.status} ${p.selected ? "selected" : ""} ${p.ghost ? "ghost" : ""} ${tiny ? "tiny" : ""} ${isPast && b.status === "planned" ? "unreviewed" : ""} ${p.pos.clippedTop ? "clip-top" : ""} ${p.pos.clippedBottom ? "clip-bottom" : ""}`}
+      className={`block status-${b.status} ${srcDone ? "src-done" : ""} ${p.selected ? "selected" : ""} ${p.ghost ? "ghost" : ""} ${tiny ? "tiny" : ""} ${isPast && b.status === "planned" ? "unreviewed" : ""} ${p.pos.clippedTop ? "clip-top" : ""} ${p.pos.clippedBottom ? "clip-bottom" : ""}`}
       style={itemStyle(p.pos, p.lay, color)}
       data-item={b.id}
       title={`${label}\n${timeLabel}${tagNames.length ? "\n#" + tagNames.join(" #") : ""}`}
@@ -733,7 +750,7 @@ function BlockView(p: {
       <div className="block-body">
         <div className="block-title">
           {b.recurrenceId && <Repeat size={10} />}
-          {p.renaming ? <InlineName value={b.title} placeholder={cat?.name ?? "Name"} target={{ kind: "block", id: b.id }} tpl={p.tpl} /> : <>{icon && <CatDot color={color} icon={icon} size={7} />}<span className={b.title ? "" : "unnamed"}>{label}</span></>}
+          {p.renaming ? <InlineName value={b.title} placeholder={b.sourceRef ? label : (cat?.name ?? "Name")} target={{ kind: "block", id: b.id }} tpl={p.tpl} /> : <>{icon && <CatDot color={color} icon={icon} size={7} />}<span className={b.title || b.sourceRef ? "" : "unnamed"}>{label}</span></>}
           {tiny && !p.compact && <span className="block-time-inline">{timeLabel}</span>}
         </div>
         {!tiny && (
