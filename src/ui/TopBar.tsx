@@ -21,6 +21,7 @@ export function TopBar() {
   const mode = useApp((s) => s.calendarMode);
   const date = useApp((s) => s.date);
   const now = useNow(60_000);
+  const obsidian = useApp((s) => s.settings.integration.enabled);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const moreBtn = useRef<HTMLButtonElement>(null);
   const todayActive = view === "calendar" && mode === "day";
@@ -29,6 +30,7 @@ export function TopBar() {
   const tabs: Array<{ id: string; label: string; active: boolean; onClick: () => void; title?: string }> = [
     { id: "today", label: "Today", active: todayActive, title: todayActive && !isSameDay(date, now) ? "Back to today (T)" : "Today (T)", onClick: () => A.openDay(Date.now()) },
     { id: "calendar", label: "Calendar", active: view === "calendar" && mode !== "day", title: "Week or month (W, M)", onClick: () => A.setCalendarMode(mode === "day" ? "week" : mode) },
+    ...(obsidian ? [{ id: "projects", label: "Projects", active: view === "projects", title: "Obsidian projects board", onClick: () => A.setView("projects") }] : []),
     { id: "stats", label: "Statistics", active: view === "stats", onClick: () => A.setView("stats") },
     { id: "presets", label: "Presets", active: view === "presets", onClick: () => A.setView("presets") },
     { id: "template", label: "Template", active: view === "template", title: "Weekly template", onClick: () => A.setView("template") },

@@ -1,18 +1,21 @@
 // Day log: an automatic diary of what actually happened, built from recorded sessions.
 // Browse any past day, copy it as Markdown or save it as YYYY-MM-DD.md (Obsidian's daily-note name).
-import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, ClipboardCopy, Download } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ClipboardCopy, Download, Link2 } from "lucide-react";
+import { store } from "../state/store";
+import * as F from "../state/focus";
+import { SessionLinks, type LinkPatch } from "./SessionLinks";
 import { Icon } from "./icons";
 import { KIND_ICON, KIND_LABEL } from "../domain/entries";
 import { useApp, useNow } from "../state/store";
 import * as A from "../state/actions";
 import * as repo from "../db/repo";
 import type { Block, JournalEntry, Session } from "../domain/types";
-import { buildDayLog, dayLogFileName, dayLogItems, dayLogMarkdown, rangeLogMarkdown, type DayLog } from "../domain/daylog";
+import { buildDayLog, dayLogFileName, dayLogItems, dayLogMarkdown, rangeLogMarkdown, type DayLog, type DayLogEntry } from "../domain/daylog";
 import { addDays, addMonths, dayKey, isSameDay, startOfDay, startOfMonth, startOfWeek } from "../domain/time";
 import { fmt, fmtDuration, fmtTime } from "../domain/format";
 import { saveTextFile } from "../platform";
-import { CatDot, Segmented } from "./bits";
+import { CatDot, Segmented, useOutside } from "./bits";
 
 const RECENT_DAYS = 60;
 
@@ -203,8 +206,11 @@ export function DayLogTimeline({ log, timeFormat, compact = false }: { log: DayL
               {e.title}
               {e.title !== e.categoryName && <span className="muted"> · {e.categoryName}</span>}
               {e.tags.length > 0 && <span className="muted"> · {e.tags.map((t) => `#${t}`).join(" ")}</span>}
+              {e.projectTitle && <span className="dl-link" title={e.projectRef ?? undefined}> · {e.projectTitle}</span>}
+              {e.taskTitle && e.taskTitle !== e.title && <span className="dl-link task" title={e.taskRef ?? undefined}> · {e.taskTitle}</span>}
             </span>
             <span className="dl-dur muted">{fmtDuration(e.end - e.start, { compact: true })}</span>
+            {!compact && !e.isBreak && <EntryLinkButton entry={e} />}
           </li>
           );
         })}
@@ -219,6 +225,34 @@ export function DayLogTimeline({ log, timeFormat, compact = false }: { log: DayL
         {log.breakMs > 0 && <span className="muted">breaks {fmtDuration(log.breakMs, { compact: true })}</span>}
       </div>
     </>
+  );
+}
+
+/** v0.12: link a logged entry (all its sessions) to an Obsidian task / project afterwards. Times never change. */
+function EntryLinkButton({ entry }: { entry: DayLogEntry }) {
+  const on = useApp((s) => s.settings.integration.enabled);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useOutside(ref, open ? () => setOpen(false) : () => {});
+  if (!on) return null;
+  const apply = ({ categoryId: _c, ...links }: LinkPatch) => {
+    const running = store.get().running?.id;
+    for (const id of entry.sessionIds) {
+      if (id === running) void F.setTarget(links).catch(A.reportError);
+      else void A.updateSession(id, links, "Link task or project").catch(A.reportError);
+    }
+  };
+  return (
+    <span className="dl-linkbtn" ref={ref}>
+      <button className={`icon-btn sm ${entry.taskRef || entry.projectRef ? "on" : ""}`} onClick={() => setOpen(!open)} aria-label="Task and project" title="Link a task or project">
+        <Link2 size={12} />
+      </button>
+      {open && (
+        <div className="popover dl-linkpop">
+          <SessionLinks value={entry} onChange={apply} compact className="insp-links" />
+        </div>
+      )}
+    </span>
   );
 }
 

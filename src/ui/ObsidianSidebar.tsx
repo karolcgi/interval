@@ -2,26 +2,23 @@
 // shown only when the integration is on. Everything here is read-only: rows drag onto PLAN (a local block that
 // references the note) or open the note in Obsidian. Nothing changes a task or project.
 import { useMemo, useState } from "react";
-import { Circle, CircleCheck, ExternalLink, GripVertical, ListFilter, RefreshCw, Search, X } from "lucide-react";
+import { CalendarCheck, ChevronDown, ChevronRight, Circle, CircleCheck, ExternalLink, GripVertical, ListFilter, RefreshCw, Repeat, Search, X } from "lucide-react";
+import { TnIcon } from "./TnIcon";
 import { store, useApp } from "../state/store";
 import * as A from "../state/actions";
 import { SideSection } from "./SideSection";
 import { beginItemDrag } from "./presetDrag";
 import { MenuItem } from "./ContextMenus";
 import { usePlacement, useOutside } from "./bits";
-import { openExternal } from "../platform";
+import { openInObsidian } from "./openInObsidian";
 import { taskDragMinutes } from "../state/library";
-import { dayKey } from "../domain/time";
-import { dateOnly, groupTasks, hexColor, matchesFilter, obsidianUri, vaultNameOf, type TaskFilter, type TaskGroupBy } from "../domain/integration";
+import { addDays, dayKey } from "../domain/time";
+import { dateOnly, groupByStatus, groupTasks, hexColor, matchesFilter, priorityOf, statusOf, type TaskFilter, type TaskGroupBy } from "../domain/integration";
 import { SyncDot } from "./IntegrationSettings";
 
 const integration = () => import("../state/integration");
 
-export function openInObsidian(path: string) {
-  const vault = vaultNameOf(store.get().settings.integration);
-  if (!vault) return A.toast("Set the vault in Settings › Obsidian first");
-  void openExternal(obsidianUri(vault, path)).catch(A.reportError);
-}
+export { openInObsidian };
 
 const STATE_TITLE = { off: "Off", connected: "Connected", offline: "Offline — showing cached data", syncing: "Synchronizing…", error: "Synchronization error — see Settings › Obsidian" } as const;
 
@@ -147,30 +144,61 @@ function shortDate(d: string | null, today: string): string | null {
   return new Date(y, m - 1, dd).toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
+const COLLAPSE_KEY = "interval.taskGroupsCollapsed";
+function loadCollapsed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
 export function TasksSection() {
   const tasks = useApp((s) => s.extTasks);
   const projects = useApp((s) => s.extProjects);
+  const meta = useApp((s) => s.extMeta);
   const cfg = useApp((s) => s.settings.integration.tasks);
   const projectFilter = useApp((s) => s.taskProjectFilter);
   const date = useApp((s) => s.date);
+  const blocks = useApp((s) => s.blocks);
   const [q, setQ] = useState("");
+  const [showPlanned, setShowPlanned] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [menu, setMenu] = useState<{ x: number; y: number; ref: string } | null>(null);
   const dragging = useApp((s) => (s.presetDrag?.item && s.presetDrag.item.kind === "task" ? s.presetDrag.item.ref : null));
   const filter: TaskFilter = cfg.defaultFilter === "project" ? "today" : cfg.defaultFilter;
-  const groupBy: TaskGroupBy = (cfg.groupBy as TaskGroupBy | undefined) ?? (cfg.groupField ? "field" : "none");
+  // v0.12: grouped by TaskNotes status by default, like TaskNotes itself.
+  const groupBy: TaskGroupBy = (cfg.groupBy as TaskGroupBy | undefined) ?? (cfg.groupField ? "field" : "status");
   const today = dayKey(date); // follows the focused day, so "Today" means the day you're sketching
 
   const saveTasks = (patch: Partial<typeof cfg>) => {
     const c = store.get().settings.integration;
     void A.updateSettings({ integration: { ...c, tasks: { ...c.tasks, ...patch } } }).catch(A.reportError);
   };
+  const toggleGroup = (k: string) => {
+    const next = new Set(collapsed);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+    } catch {
+      /* per-viewer nicety only */
+    }
+  };
   const projTitle = useMemo(() => {
     const m = new Map(projects.map((p) => [p.ref, p.title]));
     return (ref: string) => m.get(ref) ?? ref.split("/").pop()!.replace(/\.md$/i, "");
   }, [projects]);
   const projColor = useMemo(() => new Map(projects.map((p) => [p.ref, hexColor(p.data.color)])), [projects]);
+  // v0.12: a task dragged onto PLAN for this day leaves the list (it's on the plan now). Delete the block and
+  // it comes back. Read-only: nothing changes in TaskNotes.
+  const planned = useMemo(() => {
+    const end = addDays(date, 1);
+    return new Set(blocks.filter((b) => b.sourceKind === "task" && b.sourceRef && b.startAt < end && b.endAt > date).map((b) => b.sourceRef!));
+  }, [blocks, date]);
 
-  const shown = useMemo(() => {
+  const matching = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return tasks.filter((t) => {
       if (!cfg.showCompleted && !t.active) return false;
@@ -180,17 +208,22 @@ export function TasksSection() {
       return !needle || t.title.toLowerCase().includes(needle) || t.data.projectNames.some((n) => n.toLowerCase().includes(needle));
     });
   }, [tasks, q, filter, today, projectFilter, cfg.showCompleted]);
-  const groups = useMemo(() => groupTasks(shown, groupBy, projTitle), [shown, groupBy, projTitle]);
+  const hiddenCount = matching.filter((t) => planned.has(t.ref)).length;
+  const shown = useMemo(() => (showPlanned ? matching : matching.filter((t) => !planned.has(t.ref))), [matching, planned, showPlanned]);
+  const groups = useMemo(() => {
+    if (groupBy === "status") return groupByStatus(shown, meta).map((g) => ({ key: "s:" + g.key, label: g.label, status: g.status, items: g.items }));
+    return groupTasks(shown, groupBy, projTitle).map((g) => ({ key: g.key, label: g.key || "No " + (groupBy === "field" ? cfg.groupField : groupBy), status: null, items: g.items }));
+  }, [shown, groupBy, meta, projTitle, cfg.groupField]);
 
   return (
     <SideSection id="tasks" title="Tasks" actions={<SyncButton />}>
       <div className="preset-filter">
         <SearchBox value={q} onChange={setQ} label="Search tasks" />
         <select className="preset-cat-filter" value={groupBy} onChange={(e) => saveTasks({ groupBy: e.target.value as TaskGroupBy })} aria-label="Group tasks by" title="Group by">
-          <option value="none">No groups</option>
-          {cfg.groupField && <option value="field">By {cfg.groupField}</option>}
-          <option value="project">By project</option>
           <option value="status">By status</option>
+          <option value="project">By project</option>
+          {cfg.groupField && <option value="field">By {cfg.groupField}</option>}
+          <option value="none">No groups</option>
         </select>
       </div>
       <div className="ext-filters" role="tablist" aria-label="Task filter">
@@ -208,35 +241,61 @@ export function TasksSection() {
         <button className={`chip xs ${cfg.showCompleted ? "on" : ""}`} onClick={() => saveTasks({ showCompleted: !cfg.showCompleted })} aria-pressed={cfg.showCompleted} title="Show completed tasks">
           <CircleCheck size={10} />
         </button>
+        {(hiddenCount > 0 || showPlanned) && (
+          <button className={`chip xs ${showPlanned ? "on" : ""}`} onClick={() => setShowPlanned(!showPlanned)} aria-pressed={showPlanned} title={showPlanned ? "Hide tasks already on today's plan" : "Show the tasks already on today's plan"}>
+            <CalendarCheck size={10} /> {hiddenCount}
+          </button>
+        )}
       </div>
-      <div className="ext-list" aria-label="TaskNotes tasks">
-        {groups.map((g) => (
-          <div key={g.key || "_"} className="ext-group">
-            {groupBy !== "none" && <div className="ext-group-head">{g.key || "No " + (groupBy === "field" ? cfg.groupField : groupBy)}</div>}
-            {g.items.map((t) => {
-              const proj = t.data.projects[0];
-              const color = (proj && projColor.get(proj)) || null;
-              const when = shortDate(t.data.scheduled, today) ?? shortDate(t.data.due, today);
-              const overdue = !!dateOnly(t.data.due) && dateOnly(t.data.due)! < today && t.active;
-              return (
-                <div
-                  key={t.ref}
-                  className={`ext-row task ${dragging === t.ref ? "dragging" : ""} ${t.active ? "" : "done"}`}
-                  onPointerDown={(e) => beginItemDrag(e, { kind: "task", ref: t.ref, label: t.title, color, minutes: taskDragMinutes(t.data) })}
-                  onDoubleClick={() => openInObsidian(t.ref)}
-                  onContextMenu={(e) => (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, ref: t.ref }))}
-                  title={`${t.title}${t.data.projectNames.length ? `\n${t.data.projectNames.join(", ")}` : ""}${t.data.due ? `\nDue ${t.data.due}` : ""}${t.data.scheduled ? `\nScheduled ${t.data.scheduled}` : ""}\nDrag onto Today · double-click opens it in Obsidian`}
-                >
-                  <GripVertical size={12} className="preset-grip" aria-hidden />
-                  {t.active ? <Circle size={11} className="ext-check" style={color ? { color } : undefined} aria-label="Open" /> : <CircleCheck size={11} className="ext-check" aria-label="Completed" />}
-                  <span className="ext-name">{t.title}</span>
-                  {when && <span className={`ext-meta ${overdue ? "overdue" : ""}`}>{when}</span>}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        {shown.length === 0 && <div className="preset-empty muted small">{tasks.length ? "Nothing here." : "No tasks yet. Check Settings › Obsidian."}</div>}
+      <div className="ext-list tasks" aria-label="TaskNotes tasks">
+        {groups.map((g) => {
+          const isCollapsed = groupBy !== "none" && collapsed.has(g.key);
+          return (
+            <div key={g.key || "_"} className="ext-group">
+              {groupBy !== "none" && (
+                <button className="ext-group-head tn" onClick={() => toggleGroup(g.key)} aria-expanded={!isCollapsed} style={g.status?.color ? { ["--sc" as string]: g.status.color } : undefined}>
+                  {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                  {g.status && <TnIcon name={g.status.icon} color={g.status.color} size={12} className="ext-status-ico" />}
+                  <span className="ext-group-label">{g.label}</span>
+                  <span className="ext-group-count">{g.items.length}</span>
+                </button>
+              )}
+              {!isCollapsed &&
+                g.items.map((t) => {
+                  const proj = t.data.projects[0];
+                  const st = statusOf(meta, t.data.status);
+                  const pr = priorityOf(meta, t.data.priority);
+                  const color = st?.color ?? ((proj && projColor.get(proj)) || null);
+                  const when = shortDate(t.data.scheduled, today) ?? shortDate(t.data.due, today);
+                  const overdue = !!dateOnly(t.data.due) && dateOnly(t.data.due)! < today && t.active;
+                  return (
+                    <div
+                      key={t.ref}
+                      className={`ext-row task ${dragging === t.ref ? "dragging" : ""} ${t.active ? "" : "done"} ${planned.has(t.ref) ? "planned" : ""}`}
+                      style={pr?.color ? { ["--pc" as string]: pr.color } : undefined}
+                      onPointerDown={(e) => beginItemDrag(e, { kind: "task", ref: t.ref, label: t.title, color, minutes: taskDragMinutes(t.data) })}
+                      onDoubleClick={() => openInObsidian(t.ref)}
+                      onContextMenu={(e) => (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, ref: t.ref }))}
+                      title={`${t.title}${st ? `\n${st.label}` : ""}${pr ? ` · ${pr.label}` : ""}${t.data.projectNames.length ? `\n${t.data.projectNames.join(", ")}` : ""}${t.data.due ? `\nDue ${t.data.due}` : ""}${t.data.scheduled ? `\nScheduled ${t.data.scheduled}` : ""}\nDrag onto Today · double-click opens it in Obsidian`}
+                    >
+                      <span className="ext-prio" aria-hidden />
+                      {!t.active ? (
+                        <CircleCheck size={12} className="ext-check" aria-label="Completed" />
+                      ) : st ? (
+                        <TnIcon name={st.icon} color={st.color} size={12} className="ext-check" />
+                      ) : (
+                        <Circle size={11} className="ext-check" style={color ? { color } : undefined} aria-label="Open" />
+                      )}
+                      <span className="ext-name">{t.title}</span>
+                      {t.data.recurring && <Repeat size={10} className="ext-meta" aria-label="Recurring" />}
+                      {when && <span className={`ext-meta ${overdue ? "overdue" : ""}`}>{when}</span>}
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
+        {shown.length === 0 && <div className="preset-empty muted small">{tasks.length ? (hiddenCount ? "Everything here is on today's plan." : "Nothing here.") : "No tasks yet. Check Settings › Obsidian."}</div>}
       </div>
       {menu && <ExtMenu x={menu.x} y={menu.y} path={menu.ref} onClose={() => setMenu(null)} />}
     </SideSection>

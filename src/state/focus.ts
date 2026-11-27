@@ -88,8 +88,26 @@ function breakCategoryId(): Id | undefined {
 
 // ----------------------------------------------------------------------------------- the Tx
 
-type Target = { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null };
-type Resolved = { categoryId: Id; tagIds: Id[]; title: string | null; blockId: Id | null };
+/** v0.12: optional Obsidian task / project a session is about. */
+export type Links = { taskRef?: string | null; taskTitle?: string | null; projectRef?: string | null; projectTitle?: string | null };
+type Target = { blockId?: Id | null; categoryId?: Id; tagIds?: Id[]; title?: string | null } & Links;
+type Resolved = { categoryId: Id; tagIds: Id[]; title: string | null; blockId: Id | null } & Links;
+
+const linksOf = (x: Links | null | undefined): Links => ({ taskRef: x?.taskRef ?? null, taskTitle: x?.taskTitle ?? null, projectRef: x?.projectRef ?? null, projectTitle: x?.projectTitle ?? null });
+
+/** The task/project a PLAN block came from, when it was dragged from Obsidian (v0.11 source_*). */
+function blockLinks(b: Block | null): Links {
+  if (!b?.sourceRef || !b.sourceKind) return {};
+  const s = store.get();
+  if (b.sourceKind === "project") {
+    const p = s.extProjects.find((x) => x.ref === b.sourceRef);
+    return { projectRef: b.sourceRef, projectTitle: p?.title ?? b.sourceTitle ?? null };
+  }
+  const t = s.extTasks.find((x) => x.ref === b.sourceRef);
+  const proj = t?.data.projects[0] ?? null;
+  const p = proj ? s.extProjects.find((x) => x.ref === proj) : null;
+  return { taskRef: b.sourceRef, taskTitle: t?.title ?? b.sourceTitle ?? null, projectRef: proj, projectTitle: p?.title ?? t?.data.projectNames[0] ?? null };
+}
 type SegmentSpec = Resolved & { mode: SessionMode };
 
 async function findBlock(id: Id): Promise<Block | null> {
@@ -137,7 +155,7 @@ class Tx {
 
   openSegment(at: number, spec: SegmentSpec) {
     const now = Date.now();
-    const s: Session = { id: repo.newId(), startAt: at, endAt: null, tz: currentTimeZone(), categoryId: spec.categoryId, blockId: spec.blockId, title: spec.title, notes: null, mode: spec.mode, tagIds: spec.tagIds, createdAt: now, updatedAt: now };
+    const s: Session = { id: repo.newId(), startAt: at, endAt: null, tz: currentTimeZone(), categoryId: spec.categoryId, blockId: spec.blockId, title: spec.title, notes: null, mode: spec.mode, tagIds: spec.tagIds, ...linksOf(spec), createdAt: now, updatedAt: now };
     this.putSession(null, s);
     this.running = s;
   }
@@ -222,15 +240,18 @@ async function resolveTarget(t: Target): Promise<Resolved | null> {
   const block = t.blockId ? await findBlock(t.blockId) : null;
   const categoryId = t.categoryId ?? block?.categoryId ?? s.categories.find((c) => !c.archivedAt && !c.isBreak)?.id;
   if (!categoryId) return null;
+  const fromBlock = blockLinks(block);
+  const given = t.taskRef !== undefined || t.projectRef !== undefined;
   return {
     categoryId,
     tagIds: t.tagIds ?? block?.tagIds ?? [],
     title: t.title !== undefined ? t.title : blockTitle(block),
     blockId: block?.id ?? null,
+    ...linksOf(given ? t : fromBlock),
   };
 }
 
-const target = (f: FocusState): Resolved => ({ categoryId: f.categoryId, tagIds: f.tagIds, title: f.title, blockId: f.blockId });
+const target = (f: FocusState): Resolved => ({ categoryId: f.categoryId, tagIds: f.tagIds, title: f.title, blockId: f.blockId, ...linksOf(f) });
 
 // ------------------------------------------------------------------------------ transitions
 
@@ -604,6 +625,29 @@ async function nextRoundImpl(at = Date.now()): Promise<void> {
 export const nextRound = (at = Date.now()) => serial(() => nextRoundImpl(at));
 
 /**
+ * v0.12 "Skip break": right after a focus round, go straight into the next round. A break that started by
+ * itself moments ago (under a minute, never paused) is withdrawn rather than recorded as a 0-minute break.
+ */
+async function skipBreakNowImpl(at = Date.now()): Promise<void> {
+  const f = store.get().focus;
+  if (!f || f.kind === "stopwatch") return;
+  const tx = new Tx(at);
+  const newCycle = (x: FocusState): FocusState => (x.kind === "pomodoro" && x.breakKind === "long" ? { ...x, round: 0, cycleId: repo.newId() } : x);
+  if (f.phase === "break") {
+    const fresh = f.completed?.phase === "focus" && f.completed.at === f.phaseStart && f.activeMs === 0 && f.segStart !== null && at - f.segStart < MINUTE;
+    if (!fresh) return void (await tx.commit(await completeBreak(tx, f, at, "skipped", { forceFocus: true })));
+    if (tx.running) tx.deleteSession(tx.running);
+    tx.deleteRun(f.runId);
+    tx.paused = null;
+    tx.acc = 0;
+    return void (await tx.commit(await openFocus(tx, newCycle({ ...f, segStart: null, activeMs: 0, phaseMs: null, runId: null }), at)));
+  }
+  if (f.phase === "suggest") return void (await tx.commit(await openFocus(tx, newCycle(f), at)));
+  if (!isActivePhase(f)) return void (await tx.commit(await nextRoundInTx(tx, f, at)));
+}
+export const skipBreakNow = (at = Date.now()) => serial(() => skipBreakNowImpl(at));
+
+/**
  * Finish the session / cycle. A break that started by itself a moment ago (under a minute, never paused)
  * is withdrawn instead of being recorded.
  */
@@ -636,20 +680,22 @@ async function dismissImpl(): Promise<void> {
 export const dismiss = () => serial(() => dismissImpl());
 
 /** Change what the timer is about (category, tags, name, block) for the running phase and later rounds. */
-type TargetPatch = { categoryId?: Id; tagIds?: Id[]; title?: string | null; blockId?: Id | null };
+type TargetPatch = { categoryId?: Id; tagIds?: Id[]; title?: string | null; blockId?: Id | null } & Links;
 export const setTarget = (patch: TargetPatch) => serial(() => setTargetImpl(patch));
 function setTargetImpl(patch: TargetPatch): Promise<void> {
   return (async () => {
     const s = store.get();
     const f = s.focus;
     const r = s.running;
-    const current: Resolved | null = f ? target(f) : r ? { categoryId: r.categoryId, tagIds: r.tagIds, title: r.title, blockId: r.blockId } : null;
+    const current: Resolved | null = f ? target(f) : r ? { categoryId: r.categoryId, tagIds: r.tagIds, title: r.title, blockId: r.blockId, ...linksOf(r) } : null;
     if (!current) return;
     const tx = new Tx(Date.now());
     const merged: Resolved = { ...current, ...patch };
     if (patch.blockId !== undefined && patch.blockId !== current.blockId) {
       const b = patch.blockId ? await findBlock(patch.blockId) : null;
       if (b) Object.assign(merged, { categoryId: patch.categoryId ?? b.categoryId, tagIds: patch.tagIds ?? b.tagIds, title: patch.title !== undefined ? patch.title : blockTitle(b) });
+      const bl = blockLinks(b);
+      if (b && patch.taskRef === undefined && patch.projectRef === undefined && (bl.taskRef || bl.projectRef)) Object.assign(merged, linksOf(bl));
       const old = current.blockId ? await findBlock(current.blockId) : null;
       if (old?.status === "in_progress") await tx.blockStatus(old.id, "planned");
       if (b && (!f || isActivePhase(f))) await tx.blockStatus(b.id, "in_progress");
@@ -765,7 +811,7 @@ export function resolveStopwatchGap(choice: "keep" | "exclude" | "stop", gap: { 
     const f = s.focus;
     const done = s.runAccumulatedMs + Math.max(0, gap.from - r.startAt);
     tx.closeSegment(gap.from);
-    tx.openSegment(now, { categoryId: r.categoryId, tagIds: r.tagIds, title: r.title, blockId: r.blockId, mode: r.mode });
+    tx.openSegment(now, { categoryId: r.categoryId, tagIds: r.tagIds, title: r.title, blockId: r.blockId, mode: r.mode, ...linksOf(r) });
     tx.acc = done;
     const next = f && isActivePhase(f) ? { ...f, activeMs: f.activeMs + Math.max(0, gap.from - (f.segStart ?? gap.from)), segStart: now } : f;
     if (next) tx.run(next, now, null);
@@ -791,12 +837,14 @@ export type TimerCommand =
   | "extendBreak5"
   | "dismiss"
   | "abandon"
+  | "skipBreak"
   | { type: "target"; categoryId?: Id; title?: string | null }
   | { type: "length"; minutes: number }
   | { type: "onTop"; on: boolean }
   | { type: "start"; kind?: FocusKind; categoryId?: Id; title?: string | null }
   | { type: "annotate"; text: string; kind: EntryKind; sessionId: Id | null; at: number }
-  | { type: "note"; text: string; at: number };
+  | { type: "note"; text: string; at: number }
+  | { type: "task"; action: "complete" | "open" | "status"; ref: string; day: string; status?: string };
 
 /**
  * Runs a command sent by another window, the tray or a global shortcut. `rev` is the state revision the
@@ -814,6 +862,8 @@ export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void
   if (typeof cmd === "object" && cmd.type === "note") {
     return J.addQuickNote(cmd.text, cmd.at).then(() => undefined, A.reportError);
   }
+  // v0.12: a task action from the completion popup (explicit click). Not a timer action.
+  if (typeof cmd === "object" && cmd.type === "task") return taskAction(cmd).catch(A.reportError);
   return serial(async () => {
     const f = store.get().focus;
     if (rev != null && f && rev !== f.rev) return;
@@ -847,6 +897,8 @@ export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void
         return dismissImpl();
       case "abandon":
         return abandonImpl();
+      case "skipBreak":
+        return skipBreakNowImpl();
     }
     if (typeof cmd === "object") {
       if (cmd.type === "target") return setTargetImpl({ ...(cmd.categoryId ? { categoryId: cmd.categoryId } : {}), ...(cmd.title !== undefined ? { title: cmd.title?.trim() || null } : {}) });
@@ -858,6 +910,14 @@ export function runCommand(cmd: TimerCommand, rev?: number | null): Promise<void
       }
     }
   });
+}
+
+async function taskAction(cmd: { action: "complete" | "open" | "status"; ref: string; day: string; status?: string }) {
+  const I = await import("./integration");
+  if (cmd.action === "open") return (await import("../ui/openInObsidian")).openInObsidian(cmd.ref);
+  const res = cmd.action === "complete" ? await I.completeTask(cmd.ref, cmd.day) : await I.setTaskStatus(cmd.ref, cmd.status ?? "");
+  const title = store.get().extTasks.find((t) => t.ref === cmd.ref)?.title ?? "Task";
+  A.toast(res === "missing" ? `${title} isn’t in TaskNotes any more` : res === "already" ? `${title} was already ${cmd.action === "complete" ? "completed" : "set"}` : cmd.action === "complete" ? `Completed ${title} in Obsidian` : `${title} → ${cmd.status}`);
 }
 
 /** Start / pause / resume / continue, whichever fits. Starts the panel's selected mode when idle. */

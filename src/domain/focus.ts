@@ -88,6 +88,11 @@ export interface FocusState {
   tagIds: Id[];
   title: string | null;
   blockId: Id | null;
+  /** v0.12: optional Obsidian task / project the rounds are about (vault paths + title snapshots). */
+  taskRef?: string | null;
+  taskTitle?: string | null;
+  projectRef?: string | null;
+  projectTitle?: string | null;
 }
 
 /** Flowtime's commonly used break table: longer focus earns a longer break. */
@@ -191,6 +196,10 @@ export function normalizeFocus(raw: unknown, now = Date.now()): FocusState | nul
     tagIds: Array.isArray(o.tagIds) ? (o.tagIds as Id[]) : [],
     title: (o.title as string | null) ?? null,
     blockId: (o.blockId as Id | null) ?? null,
+    taskRef: (o.taskRef as string | null) ?? null,
+    taskTitle: (o.taskTitle as string | null) ?? null,
+    projectRef: (o.projectRef as string | null) ?? null,
+    projectTitle: (o.projectTitle as string | null) ?? null,
   });
 }
 
@@ -242,6 +251,11 @@ export interface TimerSnapshot {
   title: string | null;
   blockId: Id | null;
   blockTitle: string | null;
+  /** v0.12: the linked Obsidian task / project, for the completion popup. */
+  taskRef: string | null;
+  taskTitle: string | null;
+  projectRef: string | null;
+  projectTitle: string | null;
   completed: CompletedPhase | null;
   suggestedBreakMin: number | null;
   breakKind: BreakKind | null;
@@ -311,6 +325,10 @@ export function snapshotOf(i: SnapshotInput): TimerSnapshot {
     title: f?.title ?? i.running?.title ?? i.paused?.title ?? null,
     blockId,
     blockTitle: blockId && i.blockTitle ? i.blockTitle(blockId) : null,
+    taskRef: f?.taskRef ?? null,
+    taskTitle: f?.taskTitle ?? null,
+    projectRef: f?.projectRef ?? null,
+    projectTitle: f?.projectTitle ?? null,
     completed: f?.completed ?? null,
     suggestedBreakMin: f?.suggestedBreakMin ?? null,
     breakKind: f?.breakKind ?? null,

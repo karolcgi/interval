@@ -18,6 +18,9 @@ export interface FloatUi {
   focusMin: number;
   mode: "pomodoro" | "flowtime" | "stopwatch";
   annotate: boolean; // ask "what did you get done?" on the completion card
+  /** v0.12: offer "Mark task completed" etc. for a session about an Obsidian task. */
+  taskWriteBack?: boolean;
+  taskStatuses?: Array<{ value: string; label: string; color: string | null }>;
 }
 
 export type TimerBroadcast = TimerSnapshot & { ui: FloatUi };

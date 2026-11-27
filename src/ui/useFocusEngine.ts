@@ -73,6 +73,8 @@ function broadcastOf(s: AppState): TimerBroadcast {
       focusMin: s.settings.pomodoroFocus,
       annotate: s.settings.annotatePrompt,
       mode: s.settings.focusTimerMode,
+      taskWriteBack: s.settings.integration.enabled && s.settings.integration.tasks.writeBack !== false,
+      taskStatuses: (s.extMeta?.statuses ?? []).filter((x) => !x.isCompleted).map((x) => ({ value: x.value, label: x.label, color: x.color })),
     },
   };
 }

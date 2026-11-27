@@ -334,6 +334,20 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX idx_blocks_source ON blocks(source_kind, source_ref) WHERE source_ref IS NOT NULL`,
     ],
   },
+  {
+    version: 12,
+    name: "sessions linked to obsidian tasks and projects",
+    up: [
+      // Integration Phase 3: an ACTUAL session may name the task and/or project it was about. References only
+      // (vault paths), with title snapshots so history stays readable after a rename, completion or deletion.
+      `ALTER TABLE sessions ADD COLUMN task_ref TEXT`,
+      `ALTER TABLE sessions ADD COLUMN task_title TEXT`,
+      `ALTER TABLE sessions ADD COLUMN project_ref TEXT`,
+      `ALTER TABLE sessions ADD COLUMN project_title TEXT`,
+      `CREATE INDEX idx_sessions_task ON sessions(task_ref) WHERE task_ref IS NOT NULL`,
+      `CREATE INDEX idx_sessions_project ON sessions(project_ref) WHERE project_ref IS NOT NULL`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

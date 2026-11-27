@@ -14,6 +14,8 @@ import type { Category } from "../domain/types";
 import { currentSnapshot } from "./useFocusEngine";
 import { AnnotateBox } from "./Annotate";
 import { useState } from "react";
+import { SessionLinks, type LinkPatch } from "./SessionLinks";
+import { NO_LINKS, type Links } from "../state/links";
 
 const run = (p: Promise<unknown>) => void p.catch(A.reportError);
 
@@ -56,6 +58,7 @@ export function FocusPanel() {
   const snap = useMemo(() => currentSnapshot(), [focus, running, paused, categories, blocks]); // eslint-disable-line react-hooks/exhaustive-deps
   const [manualCat, setManualCat] = useState<string | null>(null);
   const [linkOff, setLinkOff] = useState<string | null>(null);
+  const [idleLinks, setIdleLinks] = useState<Links>(NO_LINKS);
 
   const open = settings.focusPanelOpen;
   const idle = snap.status === "idle";
@@ -74,8 +77,19 @@ export function FocusPanel() {
   const idleCat = linked ? linked.block.categoryId : (manualCat ?? defaultCat);
 
   const start = () => {
+    const picked = idleLinks.taskRef || idleLinks.projectRef;
     const target = linked ? { blockId: linked.block.id } : { categoryId: idleCat };
-    run(F.start(mode, target));
+    run(F.start(mode, picked ? { ...target, ...idleLinks, ...(linked ? {} : { title: idleLinks.taskTitle ?? idleLinks.projectTitle }) } : target));
+    setIdleLinks(NO_LINKS);
+  };
+  const pickIdle = (patch: LinkPatch) => {
+    const { categoryId, ...links } = patch;
+    setIdleLinks((l) => ({ ...l, ...links }));
+    if (categoryId && !linked) setManualCat(categoryId);
+  };
+  const pickRunning = (patch: LinkPatch) => {
+    const { categoryId, ...links } = patch;
+    run(F.setTarget({ ...links, ...(categoryId ? { categoryId } : {}), ...(!snap.title && !snap.blockId && links.taskTitle ? { title: links.taskTitle } : {}) }));
   };
   const setMode = (m: typeof mode) => run(A.updateSettings({ focusTimerMode: m }));
   const choosePreset = (id: string) => {
@@ -180,6 +194,7 @@ export function FocusPanel() {
                   </button>
                 )
               )}
+              <SessionLinks value={idleLinks} onChange={pickIdle} compact />
             </>
           ) : onBreak ? (
             <>
@@ -199,6 +214,7 @@ export function FocusPanel() {
                 </div>
               )}
               {snap.title && !snap.blockId && <div className="ftp-title">{snap.title}</div>}
+              <SessionLinks value={{ taskRef: snap.taskRef, taskTitle: snap.taskTitle, projectRef: snap.projectRef, projectTitle: snap.projectTitle }} onChange={pickRunning} compact />
             </>
           )}
         </div>

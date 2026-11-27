@@ -6,9 +6,9 @@ import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
 import type { ExtItemRow } from "../db/repo";
-import type { ExtProject, ExtTask } from "../domain/integration";
+import type { ExtProject, ExtTask, TnMeta } from "../domain/integration";
 
-export type View = "calendar" | "presets" | "template" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
+export type View = "calendar" | "projects" | "presets" | "template" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
 export type Selection = { kind: "block" | "session"; id: Id } | null;
 
@@ -102,6 +102,10 @@ export interface AppState {
   extProjects: ExtItemRow<ExtProject>[];
   /** Project picked in the PROJECTS section: the TASKS section shows only its tasks. */
   taskProjectFilter: string | null;
+  /** TaskNotes' own statuses and priorities (v0.12): colours, icons and order for the TASKS groups. */
+  extMeta: TnMeta | null;
+  /** Projects board layout from the projects .base file (v0.12): column order and card order. */
+  projectBoard: { columns: string[]; cardOrder: Record<string, string[]>; statusProp: string } | null;
 }
 
 export type SyncState = "off" | "connected" | "offline" | "syncing" | "error";
@@ -168,6 +172,8 @@ const initial: AppState = {
   extTasks: [],
   extProjects: [],
   taskProjectFilter: null,
+  extMeta: null,
+  projectBoard: null,
 };
 
 type Listener = () => void;
