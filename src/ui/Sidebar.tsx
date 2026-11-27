@@ -14,12 +14,15 @@ import { addDays, startOfDay } from "../domain/time";
 import { fmtDuration } from "../domain/format";
 import { CatDot } from "./bits";
 import { DayTimeSummary } from "./DayTimeSummary";
+import { ProjectsSection, TasksSection } from "./ObsidianSidebar";
+import { beginItemDrag } from "./presetDrag";
 
 export function Sidebar() {
   const view = useApp((s) => s.view);
   const categories = useApp((s) => s.categories);
   const today = useApp((s) => s.today);
   const update = useApp((s) => s.update);
+  const obsidian = useApp((s) => s.settings.integration.enabled);
   const now = useNow(30_000);
 
   const totals = useMemo(() => {
@@ -39,7 +42,12 @@ export function Sidebar() {
       <SideSection id="activities" title="Activities">
         <ul className="cat-list">
           {active.map((c) => (
-            <li key={c.id} className="cat-row" title={c.shortcut ? `Shortcut: ${c.shortcut}` : undefined}>
+            <li
+              key={c.id}
+              className="cat-row draggable"
+              title={`${c.name}${c.shortcut ? ` · shortcut ${c.shortcut}` : ""}\nDrag onto Today to sketch it into your plan`}
+              onPointerDown={(e) => beginItemDrag(e, { kind: "activity", categoryId: c.id, label: c.name, color: c.color, minutes: 0 })}
+            >
               <CatDot color={c.color} icon={c.icon} />
               <span className="cat-name">{c.name}</span>
               <span className="cat-time">{recordedById.get(c.id) ? fmtDuration(recordedById.get(c.id)!, { compact: true }) : ""}</span>
@@ -47,6 +55,9 @@ export function Sidebar() {
           ))}
         </ul>
       </SideSection>
+
+      {obsidian && <ProjectsSection />}
+      {obsidian && <TasksSection />}
 
       <FocusPanel />
 

@@ -15,6 +15,7 @@
 //    paused at the last moment Interval was alive, so time away is never recorded as focus. A break simply
 //    ends, and the next round is not started automatically.
 
+import { blockTitle } from "./blockName";
 import { store, type PausedTimer } from "./store";
 import * as repo from "../db/repo";
 import * as A from "./actions";
@@ -224,7 +225,7 @@ async function resolveTarget(t: Target): Promise<Resolved | null> {
   return {
     categoryId,
     tagIds: t.tagIds ?? block?.tagIds ?? [],
-    title: t.title !== undefined ? t.title : (block?.title ?? null),
+    title: t.title !== undefined ? t.title : blockTitle(block),
     blockId: block?.id ?? null,
   };
 }
@@ -648,7 +649,7 @@ function setTargetImpl(patch: TargetPatch): Promise<void> {
     const merged: Resolved = { ...current, ...patch };
     if (patch.blockId !== undefined && patch.blockId !== current.blockId) {
       const b = patch.blockId ? await findBlock(patch.blockId) : null;
-      if (b) Object.assign(merged, { categoryId: patch.categoryId ?? b.categoryId, tagIds: patch.tagIds ?? b.tagIds, title: patch.title !== undefined ? patch.title : b.title });
+      if (b) Object.assign(merged, { categoryId: patch.categoryId ?? b.categoryId, tagIds: patch.tagIds ?? b.tagIds, title: patch.title !== undefined ? patch.title : blockTitle(b) });
       const old = current.blockId ? await findBlock(current.blockId) : null;
       if (old?.status === "in_progress") await tx.blockStatus(old.id, "planned");
       if (b && (!f || isActivePhase(f))) await tx.blockStatus(b.id, "in_progress");

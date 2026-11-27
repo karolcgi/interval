@@ -87,7 +87,7 @@ try {
   await page.waitForSelector(".conn-report");
   await expect(page.locator(".conn-report").innerText().then((t) => /TaskNotes 4\.12\.5 in Karol_OS: 4 tasks/.test(t)), "Test connection reports version, vault and task count");
 
-  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.waitForSelector(".int-row");
   await expect(page.locator(".int-col").nth(1).locator(".int-row").count().then((n) => n === 4), "Refresh imports the 4 active tasks");
   await expect(page.locator(".sync-status").innerText().then((t) => t.includes("Connected")), "Status shows Connected");
@@ -96,13 +96,58 @@ try {
   const group = page.getByLabel("Group by");
   await group.fill("taskType");
   await group.press("Enter");
-  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".int-col:nth-child(2)")?.textContent?.includes("Deep Work"));
   ok("Group-by mapping picks up the custom TaskNotes property");
   await page.screenshot({ path: new URL("integration-settings.png", OUT).pathname, fullPage: true });
 
+  // ---- Phase 2: sidebar TASKS section and drag onto PLAN
+  await nav(page, "Today");
+  const tasksSec = page.locator(".sidebar section[aria-label='Tasks']");
+  await expect(tasksSec.isVisible(), "TASKS section appears in the sidebar when the integration is on");
+  await expect(page.locator(".sidebar section[aria-label='Projects']").isVisible(), "PROJECTS section appears too");
+  await tasksSec.getByRole("tab", { name: "All" }).click();
+  await expect(tasksSec.locator(".ext-group-head", { hasText: "Scheduled Event" }).isVisible(), "Tasks grouped by the TaskNotes property (scheduled events get their own group)");
+  await tasksSec.getByLabel("Search tasks").fill("camera");
+  await expect(tasksSec.locator(".ext-row").count().then((n) => n === 1), "Search narrows the list");
+  await tasksSec.getByLabel("Search tasks").fill("");
+
+  const HH = 56;
+  const dropTask = async (title, minute) => {
+    const row = tasksSec.locator(".ext-row", { hasText: title });
+    await row.scrollIntoViewIfNeeded();
+    const rb = await row.boundingBox();
+    await page.evaluate(([m, hh]) => (document.querySelector(".tl-scroll").scrollTop = (m / 60) * hh - 120), [minute, HH]);
+    const col = await page.locator(".tl-col").first().boundingBox();
+    const target = { x: col.x + Math.min(col.width / 4, 40), y: col.y + (minute / 60) * HH + 3 };
+    await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rb.x + rb.width / 2 + 30, rb.y + rb.height / 2 + 10, { steps: 4 });
+    await page.mouse.move(target.x, target.y, { steps: 12 });
+    await page.mouse.up();
+  };
+  const blocksNamed = (t) => page.locator(".tl-col .block", { hasText: t });
+  await dropTask("Camera movements", 10 * 60);
+  await page.waitForTimeout(200);
+  await expect(blocksNamed("Camera movements").count().then((n) => n === 1), "Dragging a task onto Today creates a PLAN block at once (no dialog)");
+  await dropTask("Camera movements", 14 * 60);
+  await page.waitForTimeout(200);
+  await expect(blocksNamed("Camera movements").count().then((n) => n === 2), "The same task can be dropped again");
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("Control+z");
+  await page.waitForTimeout(200);
+  await expect(blocksNamed("Camera movements").count().then((n) => n === 1), "Undo removes the last drop");
+
+  tasks[1].title = "Camera movements v2"; // renamed in Obsidian
+  await page.locator(".sidebar section[aria-label='Tasks'] .sync-btn").click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".tl-col .block")].some((b) => b.textContent.includes("Camera movements v2")));
+  ok("A task renamed in Obsidian renames its PLAN block");
+  await page.screenshot({ path: new URL("integration-today.png", OUT).pathname });
+
+  await nav(page, "Settings");
+  await page.getByRole("tab", { name: "Obsidian" }).click();
   up = false;
-  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".sync-status")?.textContent?.includes("Offline"));
   await expect(page.locator(".int-col").nth(1).locator(".int-row").count().then((n) => n === 4), "Offline: status says so, cached tasks stay");
 

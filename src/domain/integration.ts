@@ -40,6 +40,8 @@ export interface TaskMapping {
   completedStatuses: string[]; // fallback when TaskNotes doesn't say whether a status is completed
   showCompleted: boolean;
   defaultFilter: TaskFilter;
+  /** Sidebar grouping (v0.11); "field" = groupField. Unset = by groupField when one is configured. */
+  groupBy?: "none" | "field" | "project" | "status";
 }
 
 export type TaskFilter = "today" | "overdue" | "upcoming" | "unscheduled" | "project" | "all";
@@ -359,4 +361,65 @@ export function keepFromFullList(t: ExtTask, raw: Record<string, unknown>, since
   if (!t.completed) return true;
   const done = dateOnly(str(raw.completedDate));
   return !!done && done >= since;
+}
+
+// ------------------------------------------------------------------ PLAN blocks from tasks / projects (v0.11)
+
+interface CatLike {
+  id: string;
+  name: string;
+  isBreak: boolean;
+  archivedAt: number | null;
+  parentId: string | null;
+}
+
+/**
+ * The activity a dropped task or project gets: the first hint (task category/group, project category/client)
+ * that names an activity (exact, then one containing the other), else the first non-break activity.
+ * A PLAN block is a sketch, so this only decides its default colour; it can be changed like any block.
+ */
+export function pickCategory(hints: Array<string | null | undefined>, categories: CatLike[]): string | null {
+  const live = categories.filter((c) => !c.archivedAt && !c.isBreak);
+  for (const h of hints) {
+    const t = h?.trim().toLowerCase();
+    if (!t) continue;
+    const exact = live.find((c) => c.name.toLowerCase() === t);
+    if (exact) return exact.id;
+    const near = live.find((c) => c.name.toLowerCase().includes(t) || t.includes(c.name.toLowerCase()));
+    if (near) return near.id;
+  }
+  return (live.find((c) => !c.parentId) ?? live[0])?.id ?? null;
+}
+
+/** Valid CSS hex colour from a note property, else null. */
+export function hexColor(v: string | null | undefined): string | null {
+  const s = v?.trim() ?? "";
+  if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(s)) return s;
+  if (/^[0-9a-f]{6}$/i.test(s)) return `#${s}`;
+  return null;
+}
+
+/** Visual size for a dropped task: its TaskNotes time estimate when sensible (5 min – 8 h), else the default. */
+export function taskMinutes(raw: unknown, fallback: number): number {
+  const est = Number((raw as { timeEstimate?: unknown } | null)?.timeEstimate);
+  return Number.isFinite(est) && est >= 5 && est <= 480 ? Math.round(est) : fallback;
+}
+
+/** The title a PLAN block shows: local rename, else the live source title, else the last known one. */
+export function blockLabel(b: { title: string | null; sourceRef?: string | null; sourceTitle?: string | null }, live: string | null | undefined, fallback: string): string {
+  return b.title || (b.sourceRef ? (live ?? b.sourceTitle) : null) || fallback;
+}
+
+export type TaskGroupBy = "none" | "field" | "project" | "status";
+
+/** Groups tasks for the sidebar, keeping the incoming order inside each group. Empty values go last. */
+export function groupTasks<T extends { data: ExtTask }>(tasks: T[], by: TaskGroupBy, projectTitle: (ref: string) => string): Array<{ key: string; items: T[] }> {
+  if (by === "none") return [{ key: "", items: tasks }];
+  const m = new Map<string, T[]>();
+  for (const t of tasks) {
+    const k = by === "field" ? (t.data.group ?? "") : by === "status" ? (t.data.status ?? "") : t.data.projects[0] ? projectTitle(t.data.projects[0]) : "";
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(t);
+  }
+  return [...m.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b))).map(([key, items]) => ({ key, items }));
 }

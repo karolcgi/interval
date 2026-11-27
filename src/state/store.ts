@@ -5,6 +5,8 @@ import type { RecurrenceRule } from "../domain/recurrence";
 import type { FocusState } from "../domain/focus";
 import { DEFAULT_SETTINGS } from "../domain/types";
 import { startOfDay } from "../domain/time";
+import type { ExtItemRow } from "../db/repo";
+import type { ExtProject, ExtTask } from "../domain/integration";
 
 export type View = "calendar" | "presets" | "template" | "stats" | "budgets" | "progress" | "reviews" | "log" | "categories" | "settings";
 export type CalendarMode = "day" | "week" | "month";
@@ -27,10 +29,16 @@ export interface SleepGap {
 
 /** A preset being dragged from the library (pointer-driven, so it works inside the desktop webview). */
 export interface PresetDrag {
-  presetId: Id;
+  presetId: Id | null; // a preset, or null when `item` is set
+  /** v0.11: something other than a preset dragged onto PLAN (an activity, an Obsidian task or project). */
+  item?: DragItem;
   x: number;
   y: number;
 }
+
+export type DragItem =
+  | { kind: "activity"; categoryId: Id; label: string; color: string; minutes: number }
+  | { kind: "task" | "project"; ref: string; label: string; color: string | null; minutes: number };
 
 export interface Toast {
   id: number;
@@ -89,6 +97,11 @@ export interface AppState {
   presetEditing: Id | "new" | null; // preset open in the editor panel
   /** Obsidian & TaskNotes integration status (v0.10). */
   integration: IntegrationStatus;
+  /** Cached Obsidian tasks and projects (v0.11), live ones only; refreshed with the integration. */
+  extTasks: ExtItemRow<ExtTask>[];
+  extProjects: ExtItemRow<ExtProject>[];
+  /** Project picked in the PROJECTS section: the TASKS section shows only its tasks. */
+  taskProjectFilter: string | null;
 }
 
 export type SyncState = "off" | "connected" | "offline" | "syncing" | "error";
@@ -152,6 +165,9 @@ const initial: AppState = {
   focusOffer: null,
   presetEditing: null,
   integration: { state: "off", lastSync: null, error: null, tasks: 0, projects: 0, version: null, rev: 0 },
+  extTasks: [],
+  extProjects: [],
+  taskProjectFilter: null,
 };
 
 type Listener = () => void;

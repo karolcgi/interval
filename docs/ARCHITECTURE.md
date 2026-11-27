@@ -358,9 +358,31 @@ The full brief and phase plan: the technical assessment doc linked from PR #9.
   `e2e/integration.mjs` (Settings flow against a fake local TaskNotes; asserts no write calls), Rust unit tests for the
   loopback check and frontmatter parsing.
 
+## v0.11 notes (integration Phase 2: sidebar and PLAN)
+
+- **Sidebar**: `ui/ObsidianSidebar.tsx` adds PROJECTS and TASKS sections (after Activities) when the integration is on.
+  Both read `store.extProjects` / `store.extTasks` (live cache rows, loaded after every refresh). Projects: search,
+  Active/All. Tasks: search, Today / Overdue / Upcoming / Unscheduled / All (relative to the focused day), show completed,
+  group by the configured TaskNotes field / project / status (`settings.integration.tasks.groupBy`). Clicking a project
+  filters TASKS to it. Double-click or right-click › Open in Obsidian (`obsidian://open`). Collapse state uses the existing
+  `sidebarCollapsed`; each list scrolls on its own.
+- **Drag onto PLAN**: `presetDrag.ts › beginItemDrag` carries a `DragItem` (activity, task, project) through the same
+  pointer drag as presets; `Timeline` drops it via `library.dropItemOnDay` (Today/Calendar only, not the weekly template).
+  The block is created immediately (no dialog), undoable, repeatable. Activity rows in the sidebar are draggable too.
+- **Migration v11**: `blocks.source_kind`, `source_ref` (vault path), `source_title` (last known title). No foreign key.
+  `title` stays the local override; null shows the live title (`domain/integration › blockLabel`,
+  `state/blockName.ts` outside the timeline). Each refresh copies changed live titles into `source_title`; a task that
+  moves path with the same TaskNotes uid moves its blocks' `source_ref`. Duplicate/split/paste/drag-copy keep the source.
+- **Category of a dropped item**: `pickCategory` matches the task's category/group field or the project's category/client
+  against activity names, else the first non-break activity. Colour: the project's colour property if it's a hex colour.
+  Size: the TaskNotes time estimate (5 min – 8 h), else `defaultBlockMinutes`.
+- **Live refresh**: on window focus / visibility (at most once a minute) and every 5 minutes while visible
+  (`integration.ts › startLiveRefresh`). The sidebar sync dot refreshes on click.
+- Nothing here writes to TaskNotes or the vault (e2e asserts no non-GET calls besides `/api/tasks/query`).
+- Not yet: project cover thumbnails (needs a vault-scoped asset protocol), Planned-vs-actual removal (Phase 5).
+
 ## Roadmap notes
 
-Next: integration Phase 2 (PROJECTS and TASKS sidebar sections, filters/grouping/search, polling, drag to PLAN with
-source references, open in Obsidian). Then Phase 3 (task/project on sessions, explicit completion), Phase 4 (daily-note
+Next: integration Phase 3 (task/project on sessions, explicit completion), Phase 4 (daily-note
 managed section; reuse `/mnt/project-files/diary-parked/`), Phase 5 (project analytics, remove Planned vs actual).
 Spec "possible future enhancements": activity detection, calendar sync, ActivityWatch import.

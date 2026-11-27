@@ -193,6 +193,7 @@ let running: Promise<void> | null = null;
  * fails, the other still refreshes and the failed one keeps its cached rows (nothing is marked gone).
  */
 export function refreshIntegration(now = Date.now()): Promise<void> {
+  lastAttempt = Date.now();
   running ??= doRefresh(now).finally(() => {
     running = null;
   });
@@ -260,6 +261,11 @@ async function doRefresh(now: number): Promise<void> {
       seen.add(t.ref);
       stmts.push(repo.upsertExtItemStmt({ kind: "task", ref: t.ref, uid: t.uid, title: t.title, status: t.status, active: !t.completed && !t.archived, data: t as ExtTask, raw: r }, now));
     }
+    // A task renamed or moved in Obsidian gets a new path; with a stable uid (TaskNotes 5) PLAN blocks follow it.
+    for (const r of raw) {
+      const t = normalizeTask(r, c.tasks, projectPaths);
+      if (t?.uid) stmts.push(repo.followRenamedTaskStmt(t.uid, t.ref));
+    }
     stmts.push(repo.markExtGoneStmt("task", now, now));
     await db.batch(stmts);
   } catch (e) {
@@ -267,8 +273,10 @@ async function doRefresh(now: number): Promise<void> {
     errors.push(e instanceof Error ? e.message : String(e));
   }
 
-  const tasks = (await repo.listExtItems(db, "task")).filter((t) => t.active).length;
-  const projects = (await repo.listExtItems(db, "project")).length;
+  // PLAN blocks remember the latest title of their source, for when it is later deleted.
+  await db.batch([repo.snapshotSourceTitlesStmt()]);
+  await import("./actions").then((A) => A.refresh()).catch(() => undefined);
+  const { tasks, projects } = await loadExtIntoStore();
   const ok = errors.length === 0;
   setStatus({
     state: ok ? "connected" : offline ? "offline" : "error",
@@ -286,9 +294,9 @@ export async function initIntegration(): Promise<void> {
   const db = store.get().db;
   if (!db) return;
   const lastSync = await repo.getSetting<number>(db, "integration.lastSync");
-  const tasks = (await repo.listExtItems(db, "task")).filter((t) => t.active).length;
-  const projects = (await repo.listExtItems(db, "project")).length;
+  const { tasks, projects } = await loadExtIntoStore();
   setStatus({ lastSync, tasks, projects });
+  startLiveRefresh();
   if (store.get().settings.integration.enabled) void refreshIntegration();
 }
 
@@ -298,4 +306,37 @@ export async function cachedItems() {
   if (!db) return { tasks: [], projects: [] };
   const [tasks, projects] = await Promise.all([repo.listExtItems<ExtTask>(db, "task"), repo.listExtItems<ExtProject>(db, "project")]);
   return { tasks, projects };
+}
+
+/** Puts the live cached tasks and projects in the store (sidebar, PLAN block titles). */
+async function loadExtIntoStore(): Promise<{ tasks: number; projects: number }> {
+  const db = store.get().db;
+  if (!db) return { tasks: 0, projects: 0 };
+  const [extTasks, extProjects] = await Promise.all([repo.listExtItems<ExtTask>(db, "task"), repo.listExtItems<ExtProject>(db, "project")]);
+  store.set({ extTasks, extProjects });
+  return { tasks: extTasks.filter((t) => t.active).length, projects: extProjects.length };
+}
+
+// ------------------------------------------------------------------ live refresh (v0.11)
+
+/** Every 5 minutes while Interval is visible, and when it regains focus (at most once a minute). */
+export const POLL_MS = 5 * 60_000;
+const FOCUS_MIN_GAP_MS = 60_000;
+let liveStarted = false;
+let lastAttempt = 0;
+
+function maybeRefresh(minGap: number) {
+  const s = store.get();
+  if (!s.settings.integration.enabled || s.integration.state === "syncing") return;
+  if (Date.now() - lastAttempt < minGap) return;
+  lastAttempt = Date.now();
+  void refreshIntegration();
+}
+
+export function startLiveRefresh() {
+  if (liveStarted || typeof window === "undefined") return;
+  liveStarted = true;
+  window.addEventListener("focus", () => maybeRefresh(FOCUS_MIN_GAP_MS));
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && maybeRefresh(FOCUS_MIN_GAP_MS));
+  setInterval(() => document.visibilityState === "visible" && maybeRefresh(POLL_MS - 5_000), POLL_MS);
 }

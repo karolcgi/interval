@@ -1,3 +1,4 @@
+import { blockName } from "../state/blockName";
 import { useEffect, useMemo, useState } from "react";
 import { DiaryNotes } from "./DiaryNotes";
 import { ColorField, IconButton } from "./IconPicker";
@@ -136,7 +137,7 @@ function DayOverview() {
         <section className="panel-sec">
           <div className="eyebrow">Up next</div>
           <div className="upnext" style={catVars(lookOf(upNext, catById.get(upNext.categoryId)).color)}>
-            <div className="upnext-title">{upNext.title || catById.get(upNext.categoryId)?.name}</div>
+            <div className="upnext-title">{blockName(upNext, catById.get(upNext.categoryId)?.name)}</div>
             <div className="muted small">
               {fmtTime(upNext.startAt)} · {fmtDuration(upNext.endAt - upNext.startAt)}
             </div>
@@ -286,16 +287,30 @@ function BlockInspector({ block }: { block: Block }) {
   const isRunningHere = running?.blockId === block.id;
   const upd = (patch: Partial<Block>, label?: string) => void A.updateBlock(block.id, patch, label).catch(A.reportError);
   const canMerge = !!findMergeCandidate(block, blocks);
+  const src = useApp((s) => (block.sourceRef ? (block.sourceKind === "project" ? s.extProjects : s.extTasks).find((x) => x.ref === block.sourceRef) : undefined));
+  const srcTitle = block.sourceRef ? (src?.title ?? block.sourceTitle ?? null) : null;
 
   return (
     <div className="panel-inner insp">
       <InspectorHead color={look.color} label="Planned block" onClose={() => A.select(null)} />
       <TitleField
         value={block.title}
-        placeholder={cat?.name ?? "Title"}
+        placeholder={srcTitle ?? cat?.name ?? "Title"}
         onCommit={(title) => upd({ title }, "Rename block")}
         icon={{ value: look.icon, color: look.color, onPick: (icon) => upd({ icon }, icon ? "Change icon" : "Remove icon") }}
       />
+      {block.sourceRef && (
+        <div className="insp-row insp-source">
+          <span className="muted small">
+            From Obsidian {block.sourceKind === "project" ? "project" : "task"}
+            {src ? "" : " (no longer in Obsidian)"}
+            {block.title && srcTitle ? ` · ${srcTitle}` : ""}
+          </span>
+          <button className="btn btn-ghost sm" onClick={() => void import("./ObsidianSidebar").then((m) => m.openInObsidian(block.sourceRef!))}>
+            Open
+          </button>
+        </div>
+      )}
       <div className="insp-row">
         <CategorySelect categories={categories} value={block.categoryId} includeArchivedId={block.categoryId} onChange={(categoryId) => upd({ categoryId }, "Change category")} />
       </div>
@@ -448,7 +463,7 @@ function SessionInspector({ session }: { session: Session }) {
         <p className="small muted">
           From planned block{" "}
           <button className="link" onClick={() => A.select({ kind: "block", id: block.id })}>
-            {block.title || categories.find((c) => c.id === block.categoryId)?.name} · {fmtTime(block.startAt)}–{fmtTime(block.endAt)}
+            {blockName(block, categories.find((c) => c.id === block.categoryId)?.name)} · {fmtTime(block.startAt)}–{fmtTime(block.endAt)}
           </button>
         </p>
       )}

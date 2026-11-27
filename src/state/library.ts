@@ -4,7 +4,8 @@
 // preset or a template suggestion is an independent copy; editing either side never changes the
 // other. Template edits go through `commit` (as "tblock" changes) so they share undo/redo.
 
-import { store } from "./store";
+import { store, type DragItem } from "./store";
+import { hexColor, pickCategory, taskMinutes } from "../domain/integration";
 import * as A from "./actions";
 import * as repo from "../db/repo";
 import type { ActivityPreset, Block, Id, Interval, WeekTemplateBlock } from "../domain/types";
@@ -138,6 +139,49 @@ export async function dropPresetOnDay(presetId: Id, start: number) {
   if (!p) return;
   const { categoryId, ...extra } = presetFields(p);
   await A.createBlock({ start, end: start + p.durationMinutes * MINUTE }, categoryId, extra);
+}
+
+/**
+ * Drop an activity, Obsidian task or project on a day: a PLAN block, created immediately with no dialog.
+ * Only a local sketch: it keeps a reference to the source note and never changes the task or project. The same
+ * task can be dropped any number of times.
+ */
+export async function dropItemOnDay(item: DragItem, start: number) {
+  const s = store.get();
+  const dflt = s.settings.defaultBlockMinutes || 60;
+  if (item.kind === "activity") {
+    return A.createBlock({ start, end: start + dflt * MINUTE }, item.categoryId);
+  }
+  const projOf = (ref: string | undefined) => (ref ? s.extProjects.find((p) => p.ref === ref) : undefined);
+  if (item.kind === "task") {
+    const t = s.extTasks.find((x) => x.ref === item.ref);
+    const proj = projOf(t?.data.projects[0]);
+    const categoryId = pickCategory([t?.data.category, t?.data.group, proj?.data.category, proj?.data.client], s.categories);
+    if (!categoryId) return;
+    const minutes = item.minutes || dflt;
+    return A.createBlock({ start, end: start + minutes * MINUTE }, categoryId, {
+      sourceKind: "task",
+      sourceRef: item.ref,
+      sourceTitle: t?.title ?? item.label,
+      color: hexColor(proj?.data.color),
+      icon: "circle-check",
+    });
+  }
+  const p = projOf(item.ref);
+  const categoryId = pickCategory([p?.data.category, p?.data.client], s.categories);
+  if (!categoryId) return;
+  return A.createBlock({ start, end: start + (item.minutes || dflt) * MINUTE }, categoryId, {
+    sourceKind: "project",
+    sourceRef: item.ref,
+    sourceTitle: p?.title ?? item.label,
+    color: hexColor(p?.data.color),
+    icon: "folder-open",
+  });
+}
+
+/** Minutes a dragged task would cover (its estimate, else the default block length). */
+export function taskDragMinutes(raw: unknown): number {
+  return taskMinutes(raw, store.get().settings.defaultBlockMinutes || 60);
 }
 
 // ---------------------------------------------------------- weekly template

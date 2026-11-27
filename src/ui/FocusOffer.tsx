@@ -1,5 +1,6 @@
 // When a block made from a preset is started and that preset names a focus timer preset, offer it.
 // Nothing starts until the user picks.
+import { blockTitle } from "../state/blockName";
 import { Timer, X } from "lucide-react";
 import { useApp } from "../state/store";
 import * as A from "../state/actions";
@@ -17,7 +18,7 @@ export function FocusOfferCard() {
     <div className="focus-offer" role="dialog" aria-label="Focus timer for this block" style={catVars(cat?.color ?? "#888")} onKeyDown={(e) => e.key === "Escape" && go("cancel")}>
       <Timer size={15} className="fo-icon" aria-hidden />
       <div className="fo-text">
-        <div className="fo-title">Start {block?.title || cat?.name || "this block"}</div>
+        <div className="fo-title">Start {(block && blockTitle(block)) || cat?.name || "this block"}</div>
         <div className="muted small">
           Its preset uses Pomodoro {fp.focus} / {fp.brk}.
         </div>

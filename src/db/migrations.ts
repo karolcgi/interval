@@ -322,6 +322,18 @@ export const MIGRATIONS: Array<{ version: number; name: string; up: string[] }> 
       `CREATE INDEX ext_items_uid ON ext_items(kind, uid) WHERE uid IS NOT NULL`,
     ],
   },
+  {
+    version: 11,
+    name: "plan blocks from obsidian tasks and projects",
+    up: [
+      // A PLAN block can point at the task or project it was dragged from. Reference only; no foreign key, so a
+      // block outlives its task. source_title is the last known title.
+      `ALTER TABLE blocks ADD COLUMN source_kind TEXT`,
+      `ALTER TABLE blocks ADD COLUMN source_ref TEXT`,
+      `ALTER TABLE blocks ADD COLUMN source_title TEXT`,
+      `CREATE INDEX idx_blocks_source ON blocks(source_kind, source_ref) WHERE source_ref IS NOT NULL`,
+    ],
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

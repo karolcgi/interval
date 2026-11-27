@@ -4909,3 +4909,30 @@ html[data-window="mini"] #root { zoom: 1.25; }
 .int-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .int-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-4); flex: none; }
 .int-empty { padding: var(--sp-2) 6px; font-size: var(--fs-sm); }
+.block.src-done .block-title span { text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+
+/* ---- PROJECTS / TASKS sidebar sections (v0.11) ---- */
+.chip.xs { height: 20px; padding: 0 7px; font-size: var(--fs-xs); gap: 3px; }
+.ext-filters { display: flex; flex-wrap: wrap; gap: 3px; padding: 0 var(--sp-1) var(--sp-2); }
+.ext-list { list-style: none; margin: 0; padding: 0; max-height: min(30vh, 300px); overflow-y: auto; overscroll-behavior: contain; }
+.ext-row { display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 var(--sp-1) 0 2px; border-radius: var(--r-md); font-size: var(--fs-sm); color: var(--text-2); cursor: grab; user-select: none; }
+.ext-row:hover { background: var(--hover); color: var(--text); }
+.ext-row:hover .preset-grip { opacity: 1; }
+.ext-row.dragging { opacity: 0.45; }
+.ext-row.selected { background: var(--active); color: var(--text); }
+.ext-row.inactive .ext-name, .ext-row.done .ext-name { color: var(--text-4); }
+.ext-row.done .ext-name { text-decoration: line-through; text-decoration-color: var(--text-4); }
+.ext-swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.ext-check { flex: none; color: var(--text-4); }
+.ext-row.done .ext-check { color: var(--ok); }
+.ext-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ext-meta { flex: none; font-size: var(--fs-xs); color: var(--text-4); font-variant-numeric: tabular-nums; }
+.ext-meta.overdue { color: var(--danger); }
+.ext-group + .ext-group { margin-top: 4px; }
+.ext-group-head { font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-4); padding: 4px var(--sp-1) 2px 6px; }
+.sync-btn { margin-left: auto; }
+.cat-row.draggable { cursor: grab; border-radius: var(--r-md); user-select: none; }
+.cat-row.draggable:hover { background: var(--hover); color: var(--text); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.insp-source { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }

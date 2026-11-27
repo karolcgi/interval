@@ -50,13 +50,13 @@ export function useReorderTarget(listRef: React.RefObject<HTMLElement | null>, i
     return registerDropTarget({
       hit: (x, y) => {
         const el = listRef.current;
-        if (!el) return false;
+        if (!el || !store.get().presetDrag?.presetId) return false; // only presets reorder
         const r = el.getBoundingClientRect();
         return x >= r.left && x <= r.right && y >= r.top - 4 && y <= r.bottom + 4;
       },
       drop: (_x, y, presetId) => {
         const el = listRef.current;
-        if (!el) return;
+        if (!el || !presetId) return;
         const i = insertIndex(el, y);
         const list = idsRef.current;
         const before = list[i] ?? null;
@@ -65,7 +65,7 @@ export function useReorderTarget(listRef: React.RefObject<HTMLElement | null>, i
       },
     });
   }, [enabled, listRef]);
-  if (!enabled || !drag || !listRef.current) return null;
+  if (!enabled || !drag?.presetId || !listRef.current) return null;
   const r = listRef.current.getBoundingClientRect();
   if (drag.x < r.left || drag.x > r.right || drag.y < r.top - 4 || drag.y > r.bottom + 4) return null;
   return insertIndex(listRef.current, drag.y);
@@ -185,6 +185,16 @@ export function PresetDragChip() {
   const drag = useApp((s) => s.presetDrag);
   const preset = useApp((s) => (drag ? s.presets.find((p) => p.id === drag.presetId) : undefined));
   const cat = useApp((s) => (preset ? s.categories.find((c) => c.id === preset.categoryId) : undefined));
+  if (drag?.item) {
+    const it = drag.item;
+    const color = it.color ?? "var(--text-3)";
+    return (
+      <div className="preset-drag-chip" style={{ left: drag.x + 12, top: drag.y + 10, ...catVars(color) }} aria-hidden>
+        <CatDot color={color} icon={it.kind === "task" ? "circle-check" : it.kind === "project" ? "folder-open" : null} />
+        <span>{it.label}</span>
+      </div>
+    );
+  }
   if (!drag || !preset) return null;
   return (
     <div className="preset-drag-chip" style={{ left: drag.x + 12, top: drag.y + 10, ...catVars(lookOf(preset, cat).color) }} aria-hidden>
